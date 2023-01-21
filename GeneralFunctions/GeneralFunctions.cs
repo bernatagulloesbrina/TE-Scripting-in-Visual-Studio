@@ -23,8 +23,6 @@ namespace GeneralFunctions
 
         //add other methods always as "public static" followed by the data type they will return or void if they do not return anything.
 
-
-
         //}
 
         //******************
