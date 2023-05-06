@@ -23,9 +23,13 @@ namespace TE_Scripting
 
         void myScript()
         {
-           //your code goes here, only code should be copied to TabularEditor, along with any necessary references. 
+            /* Beginning of code to copy to Tabular Editor */
 
 
+
+
+
+            /* End of code to copy to Tabular Editor */
         }
 
 
@@ -249,9 +253,19 @@ namespace TE_Scripting
             return ScriptHelper.SelectTable(tables: tables, preselect: preselect, label: label);
         }
 
+        public static Table SelectTable(Table preselect = null, string label = "Select Table")
+        {
+            return ScriptHelper.SelectTable(preselect: preselect, label: label);
+        }
+
         public static Column SelectColumn(Table table, Column preselect = null, string label = "Select Column")
         {
             return ScriptHelper.SelectColumn(table: table, preselect: preselect, label: label); 
+        }
+
+        public static Column SelectColumn(IEnumerable<Column> columns, Column preselect = null, string label = "Select Column")
+        {
+            return ScriptHelper.SelectColumn(columns: columns, preselect: preselect, label: label);
         }
 
         public static void Output(object value, int lineNumber = -1)

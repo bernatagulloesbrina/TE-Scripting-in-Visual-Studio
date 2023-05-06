@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TabularEditor.TOMWrapper;
 using TabularEditor.Scripting;
-
+using System.Reflection.Emit;
 
 namespace GeneralFunctions
 {
@@ -22,8 +22,6 @@ namespace GeneralFunctions
         }
 
         //add other methods always as "public static" followed by the data type they will return or void if they do not return anything.
-
-
 
         //}
 
@@ -49,7 +47,7 @@ namespace GeneralFunctions
             ScriptHelper.Info(message: message, lineNumber: lineNumber);
         }
 
-        public static Table SelectTable(IEnumerable<Table> tables, Table preselect, string label)
+        public static Table SelectTable(IEnumerable<Table> tables, Table preselect = null, string label = "Select Table")
         {
             return ScriptHelper.SelectTable(tables: tables, preselect: preselect, label: label);
         }
