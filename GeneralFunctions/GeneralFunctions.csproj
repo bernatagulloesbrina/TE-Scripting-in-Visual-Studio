@@ -9,9 +9,10 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>GeneralFunctions</RootNamespace>
     <AssemblyName>GeneralFunctions</AssemblyName>
-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>5</LangVersion>
@@ -46,7 +47,7 @@
       <HintPath>C:\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
     </Reference>
     <Reference Include="TOMWrapper14">
-      <HintPath>C:\Users\berna\AppData\Local\TabularEditor\TOMWrapper14.dll</HintPath>
+      <HintPath>C:\Users\SEPM5871\AppData\Local\TabularEditor\TOMWrapper14.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
