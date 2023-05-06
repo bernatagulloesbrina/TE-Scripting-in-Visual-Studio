@@ -42,12 +42,6 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
-    <Reference Include="TabularEditor">
-      <HintPath>C:\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
-    </Reference>
-    <Reference Include="TOMWrapper14">
-      <HintPath>C:\Users\berna\AppData\Local\TabularEditor\TOMWrapper14.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="GeneralFunctions.cs" />
