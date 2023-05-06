@@ -21,9 +21,9 @@ namespace GeneralFunctions
 
         //in TE2 (at least up to 2.17.2) any method that accesses or modifies the model needs a reference to the model 
         //the following is an example method where you can build extra logic
-        public static Table CreateCalcTable(Model model, string tableName, string tableExpression)
-        {
-            return model.AddCalculatedTable(name: tableName, expression: tableExpression);
+        public static Table CreateCalcTable(Model model, string tableName, string tableExpression) 
+        { 
+            return model.AddCalculatedTable(name:tableName,expression:tableExpression);
         }
 
         //add other methods always as "public static" followed by the data type they will return or void if they do not return anything.

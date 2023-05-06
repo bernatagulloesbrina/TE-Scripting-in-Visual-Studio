@@ -1,11 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.3.32825.248
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.33328.57
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TE Scripts", "TE Scripts\TE Scripts.csproj", "{AA7FDC47-DE67-4D70-B521-08C1CAACDD51}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TE Scripts", "TE Scripts\TE Scripts.csproj", "{C65D5AD4-527E-4AF4-A292-6DC7358972C4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeneralFunctions", "GeneralFunctions\GeneralFunctions.csproj", "{919161D2-7133-4AD1-950B-4C6C297E9E2C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeneralFunctions", "GeneralFunctions\GeneralFunctions.csproj", "{1251AE0A-7803-4000-9868-5C82613F3AA6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -14,14 +14,14 @@ Global
 		Description = Solution to write tabular editor scripts and a custom class to reuse code
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{AA7FDC47-DE67-4D70-B521-08C1CAACDD51}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{AA7FDC47-DE67-4D70-B521-08C1CAACDD51}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{AA7FDC47-DE67-4D70-B521-08C1CAACDD51}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{AA7FDC47-DE67-4D70-B521-08C1CAACDD51}.Release|Any CPU.Build.0 = Release|Any CPU
-		{919161D2-7133-4AD1-950B-4C6C297E9E2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{919161D2-7133-4AD1-950B-4C6C297E9E2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{919161D2-7133-4AD1-950B-4C6C297E9E2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{919161D2-7133-4AD1-950B-4C6C297E9E2C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C65D5AD4-527E-4AF4-A292-6DC7358972C4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C65D5AD4-527E-4AF4-A292-6DC7358972C4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C65D5AD4-527E-4AF4-A292-6DC7358972C4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C65D5AD4-527E-4AF4-A292-6DC7358972C4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1251AE0A-7803-4000-9868-5C82613F3AA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1251AE0A-7803-4000-9868-5C82613F3AA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1251AE0A-7803-4000-9868-5C82613F3AA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1251AE0A-7803-4000-9868-5C82613F3AA6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
