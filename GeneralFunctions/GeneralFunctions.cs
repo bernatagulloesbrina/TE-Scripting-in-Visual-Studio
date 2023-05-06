@@ -11,9 +11,14 @@ namespace GeneralFunctions
 {
 
     //copy from the following line up to ****** and remove the // before the closing bracket
+    //after the class declaration add all the #r and using statements necessary for the custom class code to run in Tabular Editor
+    //these directives will be combined with the ones from the macro when using the CopyMacro script
     public static class Fx
     {
-        
+        //#r "Microsoft.VisualBasic"
+        //using Microsoft.VisualBasic;
+
+
         //in TE2 (at least up to 2.17.2) any method that accesses or modifies the model needs a reference to the model 
         //the following is an example method where you can build extra logic
         public static Table CreateCalcTable(Model model, string tableName, string tableExpression) 
