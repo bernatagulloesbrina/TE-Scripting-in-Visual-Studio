@@ -10,7 +10,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
 using System.IO;
-//using GeneralFunctions; //Uncomment if you use the custom class, add reference to the project too.
+using GeneralFunctions; //Uncomment if you use the custom class, add reference to the project too.
+using System.Text.RegularExpressions;
 
 // '2023-05-06 / B.Agullo / 
 //coding environment for Tabular Editor C# Scripts
@@ -23,17 +24,31 @@ namespace TE_Scripting
 
         void myScript()
         {
-            /* Beginning of code to copy to Tabular Editor */
+
+            //using GeneralFunctions; 
+            /* NOCOPY Beginning of code to copy to Tabular Editor */
+
+            Fx.myCustomClassMethod();
 
 
 
+            /* NOCOPY End of code to copy to Tabular Editor */
+        }
+        void CopyMacroFromVSFileForTE2()
+        {
 
+            // NOCOPY Compile the project and get the path to TE Scripts.dll in <PROJECT FOLDER>\bin\Debug\TE Scripts.dll
+            //#r "<HERE FULL PATH TO TE Scripts.dll>"
+            //using TE_Scripting;
 
-            /* End of code to copy to Tabular Editor */
+            TE_Scripting.TE_Scripts.CopyMacroFromVSFile(
+                @"<HERE FULL PATH TO TE_Scripts.cs FILE>",
+                @"<HERE FULL PATH TO GeneralFunctions.cs FILE>"
+            );
         }
 
 
-        void copyMacroFromVSFile()
+        public static void CopyMacroFromVSFile(string macroFilePath, string customClassFilePath)
         {
             //#r "System.IO"
             //#r "Microsoft.CodeAnalysis"
@@ -54,16 +69,21 @@ namespace TE_Scripting
             // see further detail at -- 
 
             //config
-            String macroFilePath = @"<HERE FULL PATH TO TE_Scripts.cs FILE>";
-            String customClassFilePath = @"<HERE FULL PATH TO GeneralFunctions.cs FILE>";
+            // NOCOPY -- TO USE IN TE3 without creating a the dll file, uncomment the two following lines and complete the full path of both class files.
+            //String macroFilePath = @"<HERE FULL PATH TO TE_Scripts.cs FILE>";
+            //String customClassFilePath = @"<HERE FULL PATH TO GeneralFunctions.cs FILE>";
             String codeIndent = "            ";
             String customClassEndMark = @"//******************";
+            String customClassIndent = "    ";
+            String noCopyMark = "NOCOPY";
 
             //get file structure
             SyntaxTree tree = CSharpSyntaxTree.ParseText(File.ReadAllText(macroFilePath));
 
+            List<string> macroNames = new List<string>();
+
             //extract method names that are not public static (just macro names) 
-            List<string> macroNames = tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>()
+            macroNames = tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>()
                                             .Where(m => m.Modifiers.ToString() != "public static")
                                             .Select(m => m.Identifier.ToString()).ToList();
 
@@ -121,6 +141,28 @@ namespace TE_Scripting
 
             macroCode = macroCode.Substring(firstCurlyBracket + 1, lastCurlyBracket - firstCurlyBracket - 1);
 
+            string macroCodeClean = "";
+            string[] macroCodeLines = macroCode.Split('\n');
+            foreach (string macroCodeLine in macroCodeLines)
+            {
+                if (macroCodeLine.Contains(noCopyMark))
+                {
+                    //do nothing
+                }             
+                else if (macroCodeLine.StartsWith(codeIndent))
+                {
+                    macroCodeClean += macroCodeLine.Substring(codeIndent.Length) + Environment.NewLine;
+                } 
+                else if (macroCodeLine.Contains("#r") || macroCodeLine.Contains("using")) {
+                    macroCodeClean += macroCodeLine.Trim() + Environment.NewLine;
+                }
+                else
+                {
+                    macroCodeClean += macroCodeLine + Environment.NewLine;
+                }
+            }
+
+
 
             //check the custom className 
             SyntaxTree customClassTree = CSharpSyntaxTree.ParseText(File.ReadAllText(customClassFilePath));
@@ -129,37 +171,57 @@ namespace TE_Scripting
 
 
             //check if macro is using custom class
-            if (macroCode.Contains("using " + customClassNamespaceName))
+            if (macroCodeClean.Contains("using " + customClassNamespaceName))
             {
 
                 ClassDeclarationSyntax customClass = customClassTree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().First();
 
                 String customClassCode = customClass.ToString();
+
                 int endMarkIndex = customClassCode.IndexOf(customClassEndMark);
 
                 //crop the last part and uncomment the closing bracket
-                customClassCode = customClassCode.Substring(0, endMarkIndex - 1).Replace("//}", "}").Replace("//using", "using").Replace("//#r", "#r");
+                customClassCode = customClassCode.Substring(0, endMarkIndex - 1).Replace("        //}", "}").Replace("//using", "using").Replace("//#r", "#r");
+
+                string customClassCodeClean = ""; 
+                string[] customClassCodeLines = customClassCode.Split('\n'); 
+                
+                foreach(string customClassCodeLine in customClassCodeLines)
+                {
+                    if (customClassCodeLine.Contains(noCopyMark))
+                    {
+                        //do nothing
+                    }
+                    else if (customClassCodeLine.StartsWith(customClassIndent))
+                    {
+                        customClassCodeClean += customClassCodeLine.Substring(customClassIndent.Length) + Environment.NewLine;
+                    }
+                    else
+                    {
+                        customClassCodeClean += customClassCodeLine + Environment.NewLine;
+                    }
+                }
 
 
-                int hashrFirstMacroCode = Math.Max(macroCode.IndexOf("#r"), 0);
-                int hashrFirstCustomClass = customClassCode.IndexOf("#r");
+                int hashrFirstMacroCode = Math.Max(macroCodeClean.IndexOf("#r"), 0);
+                int hashrFirstCustomClass = customClassCodeClean.IndexOf("#r");
 
                 if (hashrFirstCustomClass != -1)
                 {
-                    int hashrLastCustomClass = customClassCode.LastIndexOf("#r");
-                    int endOfHashrCustomClass = customClassCode.IndexOf(Environment.NewLine, hashrLastCustomClass);
+                    int hashrLastCustomClass = customClassCodeClean.LastIndexOf("#r");
+                    int endOfHashrCustomClass = customClassCodeClean.IndexOf(Environment.NewLine, hashrLastCustomClass);
 
-                    string[] hashrLines = customClassCode.Substring(hashrFirstCustomClass, endOfHashrCustomClass - hashrFirstCustomClass).Split('\n');
+                    string[] hashrLines = customClassCodeClean.Substring(hashrFirstCustomClass, endOfHashrCustomClass - hashrFirstCustomClass).Split('\n');
 
                     foreach (String hashrLine in hashrLines)
                     {
                         //if #r directive not present
-                        if (!macroCode.Contains(hashrLine))
+                        if (!macroCodeClean.Contains(hashrLine))
                         {
                             //insert in the code right before the first one
-                            macroCode = macroCode.Substring(0, Math.Max(hashrFirstMacroCode - 1, 0))
-                                + hashrLine + Environment.NewLine
-                                + macroCode.Substring(hashrFirstMacroCode);
+                            macroCodeClean = macroCodeClean.Substring(0, Math.Max(hashrFirstMacroCode - 1, 0))
+                                + hashrLine.Trim() + Environment.NewLine
+                                + macroCodeClean.Substring(hashrFirstMacroCode);
 
                             //update the position of the first #r
                             hashrFirstMacroCode = Math.Max(customClassCode.IndexOf("#r"), 0);
@@ -167,64 +229,68 @@ namespace TE_Scripting
                     }
 
                     //remove #r directives from custom class 
-                    customClassCode = customClassCode.Replace(customClassCode.Substring(hashrLastCustomClass, endOfHashrCustomClass - hashrLastCustomClass), "");
+                    customClassCodeClean = customClassCodeClean.Replace(customClassCodeClean.Substring(hashrLastCustomClass, endOfHashrCustomClass - hashrLastCustomClass), "");
 
                 }
 
-                int usingFirstMacroCode = Math.Max(macroCode.IndexOf("using"), 0);
-                int usingFirstCustomClass = customClassCode.IndexOf("using");
+                int usingFirstMacroCode = Math.Max(macroCodeClean.IndexOf("using"), 0);
+                int usingFirstCustomClass = customClassCodeClean.IndexOf("using");
 
                 if (usingFirstCustomClass != -1)
                 {
-                    int usingLastCustomClass = customClassCode.LastIndexOf("using");
-                    int endOfusingCustomClass = customClassCode.IndexOf(Environment.NewLine, usingLastCustomClass);
+                    int usingLastCustomClass = customClassCodeClean.LastIndexOf("using");
+                    int endOfusingCustomClass = customClassCodeClean.IndexOf(Environment.NewLine, usingLastCustomClass);
 
-                    string[] usingLines = customClassCode.Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass).Split('\n');
-
+                    string[] usingLines = customClassCodeClean.Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass).Split('\n');
+                   
                     foreach (String usingLine in usingLines)
                     {
-
-
-                        //if #r directive not present
-                        if (!macroCode.Contains(usingLine))
+                        //if using directive not present
+                        if (!macroCodeClean.Contains(usingLine))
                         {
                             //insert in the code right before the first one
-                            macroCode = macroCode.Substring(0, Math.Max(usingFirstMacroCode - 1, 0))
-                                + usingLine + Environment.NewLine
-                                + macroCode.Substring(usingFirstMacroCode);
+                            macroCodeClean = macroCodeClean.Substring(0, Math.Max(usingFirstMacroCode - 1, 0))
+                                + usingLine.Trim() + Environment.NewLine
+                                + macroCodeClean.Substring(usingFirstMacroCode);
 
-                            usingFirstMacroCode = Math.Max(macroCode.IndexOf("using"), 0);
+                            usingFirstMacroCode = Math.Max(macroCodeClean.IndexOf("using"), 0);
                         }
                     }
 
                     //remove using directives from custom class 
-                    customClassCode = customClassCode.Replace(customClassCode.Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass), "");
+                    customClassCodeClean = customClassCodeClean
+                                               .Replace(customClassCodeClean
+                                                    .Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass) + Environment.NewLine, 
+                                                    "");
 
                 }
 
                 //remove the using directive since it is an in-script custom class
-                macroCode = macroCode.Replace("using " + customClassNamespaceName, "");
+                macroCodeClean = macroCodeClean.Replace("using " + customClassNamespaceName + ";", "");
 
-                //append custom class to macro 
-                macroCode += customClassCode;
+
+                //remove empty lines
+                macroCodeClean = Regex.Replace(macroCodeClean, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline);
+                customClassCodeClean = Regex.Replace(customClassCodeClean, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline);
+
+                //append custom class to macro with some space
+                macroCodeClean += Environment.NewLine + customClassCodeClean;
             }
 
-            string macroCodeClean = "";
-            string[] macroCodeLines = macroCode.Split('\n');
-            foreach (string macroCodeLine in macroCodeLines)
-            {
-                if (macroCodeLine.StartsWith(codeIndent))
-                {
-                    macroCodeClean += macroCodeLine.Substring(codeIndent.Length);
-                }
-                else
-                {
-                    macroCodeClean += macroCodeLine;
-                }
-            }
+            string macroCodeClean2 = macroCodeClean;
 
+            int lastUsingFinal = macroCodeClean2.IndexOf("using");
+
+            if (lastUsingFinal != -1) {
+                int endOfDirective = macroCodeClean2.IndexOf("\r\n", lastUsingFinal);
+                macroCodeClean2 = macroCodeClean2.Substring(0,endOfDirective) 
+                    + Environment.NewLine
+                    + Environment.NewLine
+                    + macroCodeClean2.Substring(endOfDirective+1);
+
+            }
             //copy the code to the clipboard
-            Clipboard.SetText(macroCodeClean);
+            Clipboard.SetText(macroCodeClean2);
 
 
         }
