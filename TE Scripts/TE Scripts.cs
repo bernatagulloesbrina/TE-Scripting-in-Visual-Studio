@@ -34,7 +34,7 @@ namespace TE_Scripting
 
             /* NOCOPY End of code to copy to Tabular Editor */
         }
-        void CopyMacroFromVSFileForTE2()
+        void CopyMacroFromVSFileWithDll()
         {
 
             // NOCOPY Compile the project and get the path to TE Scripts.dll in <PROJECT FOLDER>\bin\Debug\TE Scripts.dll
