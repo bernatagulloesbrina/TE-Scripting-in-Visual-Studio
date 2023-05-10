@@ -151,14 +151,14 @@ namespace TE_Scripting
                 }             
                 else if (macroCodeLine.StartsWith(codeIndent))
                 {
-                    macroCodeClean += macroCodeLine.Substring(codeIndent.Length) + Environment.NewLine;
+                    macroCodeClean += macroCodeLine.Substring(codeIndent.Length) + '\n';
                 } 
                 else if (macroCodeLine.Contains("#r") || macroCodeLine.Contains("using")) {
-                    macroCodeClean += macroCodeLine.Trim() + Environment.NewLine;
+                    macroCodeClean += macroCodeLine.Trim() + '\n';
                 }
                 else
                 {
-                    macroCodeClean += macroCodeLine + Environment.NewLine;
+                    macroCodeClean += macroCodeLine + '\n';
                 }
             }
 
