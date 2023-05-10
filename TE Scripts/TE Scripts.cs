@@ -41,6 +41,8 @@ namespace TE_Scripting
             //#r "<HERE FULL PATH TO TE Scripts.dll>"
             //using TE_Scripting;
 
+            // NOCOPY replace <HERE FULL PATH TO TE_Scripts.cs FILE> by the full path to the TE_Scripts.cs file
+            // NOCOPY replace <HERE FULL PATH TO GeneralFunctions.cs FILE> by the full path to the GeneralFunctions.cs file
             TE_Scripting.TE_Scripts.CopyMacroFromVSFile(
                 @"<HERE FULL PATH TO TE_Scripts.cs FILE>",
                 @"<HERE FULL PATH TO GeneralFunctions.cs FILE>"
