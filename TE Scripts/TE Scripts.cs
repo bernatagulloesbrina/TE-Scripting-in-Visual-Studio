@@ -57,6 +57,8 @@ namespace TE_Scripting
             //using Microsoft.CodeAnalysis;
             //using Microsoft.CodeAnalysis.CSharp;
             //using Microsoft.CodeAnalysis.CSharp.Syntax;
+            //using System.Text.RegularExpressions;
+
 
             // '2023-05-06 / B.Agullo / 
             // this macro copies the code of any of the methods defined in the TE_Scripts.cs File
@@ -161,7 +163,9 @@ namespace TE_Scripting
                     macroCodeClean += macroCodeLine + '\n';
                 }
             }
-
+            
+            //remove empty lines
+            macroCodeClean = Regex.Replace(macroCodeClean, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline);
 
 
             //check the custom className 
@@ -282,7 +286,7 @@ namespace TE_Scripting
             int lastUsingFinal = macroCodeClean2.IndexOf("using");
 
             if (lastUsingFinal != -1) {
-                int endOfDirective = macroCodeClean2.IndexOf("\r\n", lastUsingFinal);
+                int endOfDirective = macroCodeClean2.IndexOf(";", lastUsingFinal) + 1;
                 macroCodeClean2 = macroCodeClean2.Substring(0,endOfDirective) 
                     + Environment.NewLine
                     + Environment.NewLine
