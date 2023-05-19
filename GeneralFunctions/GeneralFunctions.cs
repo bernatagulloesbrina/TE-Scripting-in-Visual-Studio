@@ -19,16 +19,19 @@ namespace GeneralFunctions
         //using Microsoft.VisualBasic;
 
 
-        // NOCOPY in TE2 (at least up to 2.17.2) any method that accesses or modifies the model needs a reference to the model 
-        // NOCOPY the following is an example method where you can build extra logic
+        // NOCOPY    in TE2 (at least up to 2.17.2) any method that accesses or modifies
+        // NOCOPY    the model needs a reference to the model 
+        // NOCOPY    the following is an example method where you can build extra logic
         public static Table CreateCalcTable(Model model, string tableName, string tableExpression)
         {
-            return model.AddCalculatedTable(name: tableName, expression: tableExpression);
-        }
-
-        public static void myCustomClassMethod()
-        {
-            Info("you just called a method in the custom class");
+            if(!model.Tables.Any(t => t.Name == tableName))
+            {
+                return model.AddCalculatedTable(tableName, tableExpression);
+            }
+            else
+            {
+                return model.Tables.Where(t => t.Name == tableName).First();
+            }
         }
 
         // NOCOPY add other methods always as "public static" followed by the data type they will return or void if they do not return anything.

@@ -26,13 +26,10 @@ namespace TE_Scripting
         {
 
             //using GeneralFunctions; 
-            /* NOCOPY Beginning of code to copy to Tabular Editor */
 
-            Fx.myCustomClassMethod();
+            Fx.CreateCalcTable(Model, "myMeasures", "{0}");
 
-
-
-            /* NOCOPY End of code to copy to Tabular Editor */
+            
         }
         void CopyMacroFromVSFileWithDll()
         {
@@ -256,7 +253,7 @@ namespace TE_Scripting
                         {
                             //insert in the code right before the first one
                             macroCodeClean = macroCodeClean.Substring(0, Math.Max(usingFirstMacroCode - 1, 0))
-                                + usingLine.Trim() + Environment.NewLine
+                                + Environment.NewLine + usingLine.Trim() + Environment.NewLine
                                 + macroCodeClean.Substring(usingFirstMacroCode);
 
                             usingFirstMacroCode = Math.Max(macroCodeClean.IndexOf("using"), 0);
