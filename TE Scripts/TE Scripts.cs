@@ -12,10 +12,11 @@ using Microsoft.CodeAnalysis.CSharp;
 using System.IO;
 using GeneralFunctions; //Uncomment if you use the custom class, add reference to the project too.
 using System.Text.RegularExpressions;
+using Microsoft.VisualBasic;
 
 // '2023-05-06 / B.Agullo / 
 //coding environment for Tabular Editor C# Scripts
-// see --- for reference on how to use it.
+// see https://www.esbrina-ba.com/c-scripting-nirvana-effortlessly-use-visual-studio-as-your-coding-environment/ for reference on how to use it.
 
 namespace TE_Scripting
 {
@@ -31,6 +32,85 @@ namespace TE_Scripting
 
             
         }
+
+        //code snippets
+        void userChooseName()
+        {
+            //#r "Microsoft.VisualBasic"
+            //using Microsoft.VisualBasic;
+
+            string calcGroupName = Interaction.InputBox("Provide a name for your Calc Group", "Calc Group Name", "Time Intelligence", 740, 400);
+            
+            //sample code using the variable
+            Output(calcGroupName);
+        }
+
+        void userChooseYesNo()
+        {
+
+            //using System.Windows.Forms;
+
+            DialogResult dialogResult = MessageBox.Show(text:"Generate Field Parameter?", caption:"Field Parameter", buttons:MessageBoxButtons.YesNo);
+            bool generateFieldParameter = (dialogResult == DialogResult.Yes);
+            
+            //sample code using the variable
+            Output(generateFieldParameter);
+
+        }
+
+        void userChooseString()
+        {
+            
+            List<string> sampleList = new List<string>();
+
+            sampleList.Add("a");
+            sampleList.Add("b");
+            sampleList.Add("c");
+
+
+            // Code that defines a local function "SelectString", which pops up a listbox allowing the user to select a 
+            // string from a number of options:
+            Func<IList<string>, string, string> SelectString = (IList<string> options, string title) =>
+            {
+                var form = new Form();
+                form.Text = title;
+                var buttonPanel = new Panel();
+                buttonPanel.Dock = DockStyle.Bottom;
+                buttonPanel.Height = 30;
+                var okButton = new Button() { DialogResult = DialogResult.OK, Text = "OK" };
+                var cancelButton = new Button() { DialogResult = DialogResult.Cancel, Text = "Cancel", Left = 80 };
+                var listbox = new ListBox();
+                listbox.Dock = DockStyle.Fill;
+                listbox.Items.AddRange(options.ToArray());
+                listbox.SelectedItem = options[0];
+
+                form.Controls.Add(listbox);
+                form.Controls.Add(buttonPanel);
+                buttonPanel.Controls.Add(okButton);
+                buttonPanel.Controls.Add(cancelButton);
+
+                var result = form.ShowDialog();
+                if (result == DialogResult.Cancel) return null;
+                return listbox.SelectedItem.ToString();
+            };
+
+            
+
+            //let the user select the name of the macro to copy
+            String select = SelectString(sampleList, "Choose a macro");
+
+            //check that indeed one macro was selected
+            if (select == null)
+            {
+                Info("You cancelled!");
+                return;
+            }
+
+            //code using "select" variable
+            Output(select);
+
+        }
+    
         void CopyMacroFromVSFileWithDll()
         {
 

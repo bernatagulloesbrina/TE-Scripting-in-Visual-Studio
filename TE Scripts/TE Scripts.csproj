@@ -48,7 +48,7 @@
       <HintPath>C:\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
     </Reference>
     <Reference Include="TOMWrapper14">
-      <HintPath>C:\Users\SEPM5871\AppData\Local\TabularEditor\TOMWrapper14.dll</HintPath>
+      <HintPath>C:\Users\berna\AppData\Local\TabularEditor\TOMWrapper14.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
