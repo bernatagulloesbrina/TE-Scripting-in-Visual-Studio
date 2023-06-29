@@ -33,6 +33,75 @@ namespace TE_Scripting
             
         }
 
+
+        void distinctCountMeasures()
+        {
+            if(Selected.Columns.Count() == 0)
+            {
+                Error("You need to select at least one measure.");
+                return;
+            };
+
+            foreach(Column column in Selected.Columns)
+            {
+                string measureName = "Distinct " + column.Name;
+                string measureExpression = String.Format("DISTINCTCOUNT({0})", column.DaxObjectFullName);
+                string measureDescription = "Distinct count of " + column.Name;
+
+                Measure measure = column.Table.AddMeasure(measureName, measureExpression);
+                measure.Description = measureDescription;
+
+                measure.FormatDax(); 
+
+            };
+        }
+
+        void Sumxcustomcolumn()
+        {
+            if(Selected.Measures.Count() == 0)
+            {
+                Error("Select at least one measure.");
+                return;
+            }
+
+            Table table = SelectTable(label: "Choose table from grain column");
+            if(table == null)
+            {
+                Error("You cancelled");
+                return;
+            }
+
+            Column column = SelectColumn(table: table, label: "Choose grain column");
+            if(column == null)
+            {
+                Error("You cancelled");
+                return;
+            }
+
+            foreach(Measure measure in Selected.Measures)
+            {
+                string measureName = "Sum " + measure.Name + " by " + column.Name;
+                string measureExpression = String.Format(
+                    @"SUMX(VALUES({0}),{1})",
+                    column.DaxObjectFullName,
+                    measure.DaxObjectFullName);
+                
+                string measureDescription = measureName + " " + measureExpression;
+
+                string measureDisplayFolder = measure.Name + " variations";
+
+
+                Measure newMeasure = measure.Table.AddMeasure(measureName, measureExpression, measureDisplayFolder);
+                newMeasure.Description = measureDescription;
+
+                newMeasure.FormatDax();
+
+            }
+
+
+        }
+
+
         //code snippets
         void userChooseName()
         {
@@ -115,14 +184,14 @@ namespace TE_Scripting
         {
 
             // NOCOPY Compile the project and get the path to TE Scripts.dll in <PROJECT FOLDER>\bin\Debug\TE Scripts.dll
-            //#r "<HERE FULL PATH TO TE Scripts.dll>"
+            //#r "G:\Mi unidad\CONFERENCIES POWER BI\2023-06-27 Denmark Power BI User Group\demo\TE Scripts\bin\Debug\TE Scripts.dll"
             //using TE_Scripting;
 
             // NOCOPY replace <HERE FULL PATH TO TE_Scripts.cs FILE> by the full path to the TE_Scripts.cs file
             // NOCOPY replace <HERE FULL PATH TO GeneralFunctions.cs FILE> by the full path to the GeneralFunctions.cs file
             TE_Scripting.TE_Scripts.CopyMacroFromVSFile(
-                @"<HERE FULL PATH TO TE_Scripts.cs FILE>",
-                @"<HERE FULL PATH TO GeneralFunctions.cs FILE>"
+                @"G:\Mi unidad\CONFERENCIES POWER BI\2023-06-27 Denmark Power BI User Group\demo\TE Scripts\TE Scripts.cs",
+                @"G:\Mi unidad\CONFERENCIES POWER BI\2023-06-27 Denmark Power BI User Group\demo\GeneralFunctions\GeneralFunctions.cs"
             );
         }
 
