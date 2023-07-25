@@ -117,14 +117,15 @@ namespace TE_Scripting
         {
 
             // NOCOPY Compile the project and get the path to TE Scripts.dll in <PROJECT FOLDER>\bin\Debug\TE Scripts.dll
-            //#r "G:\Mi unidad\CONFERENCIES POWER BI\2023-06-27 Denmark Power BI User Group\demo\TE Scripts\bin\Debug\TE Scripts.dll"
+            // NOCOPY replace 
+            //#r "<HERE FULL PATH TO 'TE Scripts.dll' file>"
             //using TE_Scripting;
 
             // NOCOPY replace <HERE FULL PATH TO TE_Scripts.cs FILE> by the full path to the TE_Scripts.cs file
             // NOCOPY replace <HERE FULL PATH TO GeneralFunctions.cs FILE> by the full path to the GeneralFunctions.cs file
             TE_Scripting.TE_Scripts.CopyMacroFromVSFile(
-                @"G:\Mi unidad\CONFERENCIES POWER BI\2023-06-27 Denmark Power BI User Group\demo\TE Scripts\TE Scripts.cs",
-                @"G:\Mi unidad\CONFERENCIES POWER BI\2023-06-27 Denmark Power BI User Group\demo\GeneralFunctions\GeneralFunctions.cs"
+                @"<HERE FULL PATH TO TE_Scripts.cs FILE>",
+                @"<HERE FULL PATH TO GeneralFunctions.cs FILE>"
             );
         }
 
