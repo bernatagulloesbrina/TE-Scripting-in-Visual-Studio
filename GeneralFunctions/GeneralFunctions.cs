@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using TabularEditor.TOMWrapper;
 using TabularEditor.Scripting;
 using System.Reflection.Emit;
+using Microsoft.VisualBasic;
+using System.Windows.Forms;
 
 namespace GeneralFunctions
 {
@@ -16,7 +18,9 @@ namespace GeneralFunctions
     public static class Fx
     {
         //#r "Microsoft.VisualBasic"
+        //#r "System.Windows.Forms"
         //using Microsoft.VisualBasic;
+        //using System.Windows.Forms;
 
 
         // NOCOPY    in TE2 (at least up to 2.17.2) any method that accesses or modifies
@@ -32,6 +36,55 @@ namespace GeneralFunctions
             {
                 return model.Tables.Where(t => t.Name == tableName).First();
             }
+        }
+
+        public static string GetNameFromUser(string Prompt, string Title, string DefaultResponse)
+        {    
+            string response = Interaction.InputBox(Prompt, Title, DefaultResponse, 740, 400);
+            return response;
+        }
+
+
+        public static string ChooseString(IList<string> OptionList)
+        {
+            Func<IList<string>, string, string> SelectString = (IList<string> options, string title) =>
+            {
+                var form = new Form();
+                form.Text = title;
+                var buttonPanel = new Panel();
+                buttonPanel.Dock = DockStyle.Bottom;
+                buttonPanel.Height = 30;
+                var okButton = new Button() { DialogResult = DialogResult.OK, Text = "OK" };
+                var cancelButton = new Button() { DialogResult = DialogResult.Cancel, Text = "Cancel", Left = 80 };
+                var listbox = new ListBox();
+                listbox.Dock = DockStyle.Fill;
+                listbox.Items.AddRange(options.ToArray());
+                listbox.SelectedItem = options[0];
+
+                form.Controls.Add(listbox);
+                form.Controls.Add(buttonPanel);
+                buttonPanel.Controls.Add(okButton);
+                buttonPanel.Controls.Add(cancelButton);
+
+                var result = form.ShowDialog();
+                if (result == DialogResult.Cancel) return null;
+                return listbox.SelectedItem.ToString();
+            };
+
+
+
+            //let the user select the name of the macro to copy
+            String select = SelectString(OptionList, "Choose a macro");
+
+            //check that indeed one macro was selected
+            if (select == null)
+            {
+                Info("You cancelled!");
+                
+            }
+
+            return select;
+
         }
 
         // NOCOPY add other methods always as "public static" followed by the data type they will return or void if they do not return anything.
