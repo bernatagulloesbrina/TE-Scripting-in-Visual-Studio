@@ -162,7 +162,7 @@ namespace TE_Scripting
             //using Microsoft.CodeAnalysis.CSharp.Syntax;
             //using System.Text.RegularExpressions;
 
-
+            // '2023-11-25 / B.Agullo / Fixed the code to combine references from general functions correctly
             // '2023-05-06 / B.Agullo / 
             // this macro copies the code of any of the methods defined in the TE_Scripts.cs File
             // if the macro is using the custom class it must include de following commented directive
@@ -181,7 +181,8 @@ namespace TE_Scripting
             String customClassEndMark = @"//******************";
             String customClassIndent = "    ";
             String noCopyMark = "NOCOPY";
-
+            //these libraries are already loaded in Tabular Editor and must not be specified
+            String[] tabularEditorLibraries = { "#r \"System.Windows.Forms\"" };
             //get file structure
             SyntaxTree tree = CSharpSyntaxTree.ParseText(File.ReadAllText(macroFilePath));
 
@@ -253,12 +254,13 @@ namespace TE_Scripting
                 if (macroCodeLine.Contains(noCopyMark))
                 {
                     //do nothing
-                }             
+                }
                 else if (macroCodeLine.StartsWith(codeIndent))
                 {
                     macroCodeClean += macroCodeLine.Substring(codeIndent.Length) + '\n';
-                } 
-                else if (macroCodeLine.Contains("#r") || macroCodeLine.Contains("using")) {
+                }
+                else if (macroCodeLine.Contains("#r") || macroCodeLine.Contains("using"))
+                {
                     macroCodeClean += macroCodeLine.Trim() + '\n';
                 }
                 else
@@ -266,7 +268,7 @@ namespace TE_Scripting
                     macroCodeClean += macroCodeLine + '\n';
                 }
             }
-            
+
             //remove empty lines
             macroCodeClean = Regex.Replace(macroCodeClean, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline);
 
@@ -290,10 +292,10 @@ namespace TE_Scripting
                 //crop the last part and uncomment the closing bracket
                 customClassCode = customClassCode.Substring(0, endMarkIndex - 1).Replace("        //}", "}").Replace("//using", "using").Replace("//#r", "#r");
 
-                string customClassCodeClean = ""; 
-                string[] customClassCodeLines = customClassCode.Split('\n'); 
-                
-                foreach(string customClassCodeLine in customClassCodeLines)
+                string customClassCodeClean = "";
+                string[] customClassCodeLines = customClassCode.Split('\n');
+
+                foreach (string customClassCodeLine in customClassCodeLines)
                 {
                     if (customClassCodeLine.Contains(noCopyMark))
                     {
@@ -320,10 +322,19 @@ namespace TE_Scripting
 
                     string[] hashrLines = customClassCodeClean.Substring(hashrFirstCustomClass, endOfHashrCustomClass - hashrFirstCustomClass).Split('\n');
 
+
+
                     foreach (String hashrLine in hashrLines)
                     {
+
+
+
+                        if (tabularEditorLibraries.Contains(hashrLine.Trim()))
+                        {
+                            //do nothing
+                        }
                         //if #r directive not present
-                        if (!macroCodeClean.Contains(hashrLine))
+                        else if (!macroCodeClean.Contains(hashrLine.Trim()))
                         {
                             //insert in the code right before the first one
                             macroCodeClean = macroCodeClean.Substring(0, Math.Max(hashrFirstMacroCode - 1, 0))
@@ -331,12 +342,18 @@ namespace TE_Scripting
                                 + macroCodeClean.Substring(hashrFirstMacroCode);
 
                             //update the position of the first #r
-                            hashrFirstMacroCode = Math.Max(customClassCode.IndexOf("#r"), 0);
+                            hashrFirstMacroCode = Math.Max(macroCodeClean.IndexOf("#r"), 0);
                         }
+
+
                     }
 
+
+
                     //remove #r directives from custom class 
-                    customClassCodeClean = customClassCodeClean.Replace(customClassCodeClean.Substring(hashrLastCustomClass, endOfHashrCustomClass - hashrLastCustomClass), "");
+                    customClassCodeClean = customClassCodeClean.Replace(customClassCodeClean.Substring(hashrFirstCustomClass, endOfHashrCustomClass - hashrFirstCustomClass), "");
+
+
 
                 }
 
@@ -349,7 +366,7 @@ namespace TE_Scripting
                     int endOfusingCustomClass = customClassCodeClean.IndexOf(Environment.NewLine, usingLastCustomClass);
 
                     string[] usingLines = customClassCodeClean.Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass).Split('\n');
-                   
+
                     foreach (String usingLine in usingLines)
                     {
                         //if using directive not present
@@ -367,7 +384,7 @@ namespace TE_Scripting
                     //remove using directives from custom class 
                     customClassCodeClean = customClassCodeClean
                                                .Replace(customClassCodeClean
-                                                    .Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass) + Environment.NewLine, 
+                                                    .Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass) + Environment.NewLine,
                                                     "");
 
                 }
@@ -388,12 +405,13 @@ namespace TE_Scripting
 
             int lastUsingFinal = macroCodeClean2.IndexOf("using");
 
-            if (lastUsingFinal != -1) {
+            if (lastUsingFinal != -1)
+            {
                 int endOfDirective = macroCodeClean2.IndexOf(";", lastUsingFinal) + 1;
-                macroCodeClean2 = macroCodeClean2.Substring(0,endOfDirective) 
+                macroCodeClean2 = macroCodeClean2.Substring(0, endOfDirective)
                     + Environment.NewLine
                     + Environment.NewLine
-                    + macroCodeClean2.Substring(endOfDirective+1);
+                    + macroCodeClean2.Substring(endOfDirective + 1);
 
             }
             //copy the code to the clipboard
