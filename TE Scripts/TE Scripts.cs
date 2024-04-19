@@ -28,12 +28,13 @@ namespace TE_Scripting
 
             //using GeneralFunctions; 
 
-            bool waitCursor = Application.UseWaitCursor;
-            Application.UseWaitCursor = false;
+            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
+            //bool waitCursor = Application.UseWaitCursor;
+            //Application.UseWaitCursor = false;
             
             Fx.CreateCalcTable(Model, "myMeasures", "{0}");
 
-            Application.UseWaitCursor = waitCursor;
+            //Application.UseWaitCursor = waitCursor;
         }
 
 
@@ -44,15 +45,16 @@ namespace TE_Scripting
             //#r "Microsoft.VisualBasic"
             //using Microsoft.VisualBasic;
 
-            bool waitCursor = Application.UseWaitCursor;
-            Application.UseWaitCursor = false;
+            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
+            //bool waitCursor = Application.UseWaitCursor;
+            //Application.UseWaitCursor = false;
 
             string calcGroupName = Interaction.InputBox("Provide a name for your Calc Group", "Calc Group Name", "Time Intelligence", 740, 400);
             
             //sample code using the variable
             Output(calcGroupName);
 
-            Application.UseWaitCursor = waitCursor;
+            //Application.UseWaitCursor = waitCursor;
 
         }
 
@@ -61,8 +63,9 @@ namespace TE_Scripting
 
             //using System.Windows.Forms;
 
-            bool waitCursor = Application.UseWaitCursor;
-            Application.UseWaitCursor = false;
+            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
+            //bool waitCursor = Application.UseWaitCursor;
+            //Application.UseWaitCursor = false;
 
             DialogResult dialogResult = MessageBox.Show(text:"Generate Field Parameter?", caption:"Field Parameter", buttons:MessageBoxButtons.YesNo);
             bool generateFieldParameter = (dialogResult == DialogResult.Yes);
@@ -70,7 +73,7 @@ namespace TE_Scripting
             //sample code using the variable
             Output(generateFieldParameter);
 
-            Application.UseWaitCursor = waitCursor;
+            //Application.UseWaitCursor = waitCursor;
 
         }
 
@@ -79,8 +82,9 @@ namespace TE_Scripting
 
             //using System.Windows.Forms;
 
-            bool waitCursor = Application.UseWaitCursor;
-            Application.UseWaitCursor = false;
+            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
+            //bool waitCursor = Application.UseWaitCursor;
+            //Application.UseWaitCursor = false;
 
 
             List<string> sampleList = new List<string>();
@@ -131,7 +135,7 @@ namespace TE_Scripting
             //code using "select" variable
             Output(select);
 
-            Application.UseWaitCursor = waitCursor;
+            //Application.UseWaitCursor = waitCursor;
         }
     
         void CopyMacroFromVSFileWithDll()
