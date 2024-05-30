@@ -87,6 +87,73 @@ namespace GeneralFunctions
 
         }
 
+        public static IEnumerable<Table> GetDateTables(Model model)
+        {
+            IEnumerable<Table> dateTables = null as IEnumerable<Table>;
+
+            if (model.Tables.Any(t => t.DataCategory == "Time" && t.Columns.Any(c => c.IsKey == true)))
+            {
+                dateTables = model.Tables.Where(t => t.DataCategory == "Time" && t.Columns.Any(c => c.IsKey == true && c.DataType == DataType.DateTime));
+            }
+            else
+            {
+                Error("No date table detected in the model. Please mark your date table(s) as date table");
+
+            }
+
+            return dateTables;
+        }
+
+
+        public static Table GetTablesWithAnnotation(IEnumerable<Table> tables, string annotationLabel, string annotationValue)
+        {
+            Func<Table, bool> lambda = t => t.GetAnnotation(annotationLabel) == annotationValue;
+
+            IEnumerable<Table> matchTables = GetFilteredTables(tables, lambda);
+
+            if (matchTables == null)
+            {
+                return null;
+            }
+            else
+            {
+                return matchTables.First();
+            }
+
+        }
+
+        public static IEnumerable<Table> GetFilteredTables(IEnumerable<Table> tables, Func<Table, bool> lambda)
+        {
+            if (tables.Any(t => lambda(t)))
+            {
+                return tables.Where(t => lambda(t));
+            }
+            else
+            {
+                return null as IEnumerable<Table>;
+            }
+        }
+
+        public static IEnumerable<Column> GetFilteredColumns(IEnumerable<Column> columns, Func<Column, bool> lambda, bool returnAllIfNoneFound = true)
+        {
+            if (columns.Any(c => lambda(c)))
+            {
+                return columns.Where(c => lambda(c));
+            }
+            else
+            {
+                if (returnAllIfNoneFound)
+                {
+                    return columns;
+                }
+                else
+                {
+                    return null as IEnumerable<Column>;
+                }
+            }
+
+        }
+
         // NOCOPY add other methods always as "public static" followed by the data type they will return or void if they do not return anything.
 
         //}
