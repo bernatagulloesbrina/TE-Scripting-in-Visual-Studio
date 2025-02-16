@@ -23,6 +23,23 @@ namespace TE_Scripting
     public class TE_Scripts
     {
 
+        
+        void myNewScript()
+        {
+            //create a measure for each of the selected columns
+            foreach(Column c in Selected.Columns)
+            {
+                string mName = "Sum of " + c.Name;
+                string mExpression = String.Format("SUM({0})", c.DaxObjectFullName);
+                Measure m = c.Table.AddMeasure(mName, mExpression);
+                m.FormatString = c.FormatString; 
+                //put the measure in a subfolder 
+                
+            }
+            
+        }
+
+
         void myScript()
         {
 
