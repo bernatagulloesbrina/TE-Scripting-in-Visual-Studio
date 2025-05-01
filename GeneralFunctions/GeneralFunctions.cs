@@ -148,13 +148,13 @@ namespace GeneralFunctions
             ScriptHelper.Info(message: message, lineNumber: lineNumber);
         }
 
-        public static Table SelectTable(IEnumerable<Table> tables, Table preselect = null, string label= "Select Table")
+        public static Table SelectTable(IEnumerable<Table> tables, Table preselect = null, string label = "Select Table")
         {
-            return ScriptHelper.SelectTable(tables: tables, preselect: preselect, label: label);
+            return ScriptHelper.SelectTable(tables: tables, preselect: preselect, label: "Select Table");
         }
-        public static Measure SelectMeasure(Measure preselect = null, string label = "Select Table")
+        public static Measure SelectMeasure(Measure preselect = null, string label = "Select Measure")
         {
-            return ScriptHelper.SelectMeasure(preselect: preselect, label: label);
+            return ScriptHelper.SelectMeasure(preselect: preselect, label: "Select Measure");
         }
         public static void Output(object value, int lineNumber = -1)
         {
