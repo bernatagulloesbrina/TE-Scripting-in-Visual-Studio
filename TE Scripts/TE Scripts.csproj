@@ -1,10 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
-    <PropertyGroup>
+  <PropertyGroup>
     <RuntimeIdentifiers>win</RuntimeIdentifiers>
   </PropertyGroup>
-  
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -36,8 +35,6 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-
-
   <ItemGroup>
     <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="System" />
@@ -52,10 +49,10 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
     <Reference Include="TabularEditor">
-      <HintPath>C:\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Tabular Editor 2\TabularEditor.exe</HintPath>
     </Reference>
     <Reference Include="TOMWrapper14">
-      <HintPath>C:\Users\berna\AppData\Local\TabularEditor\TOMWrapper14.dll</HintPath>
+      <HintPath>..\..\..\..\AppData\Local\TabularEditor\TOMWrapper14.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
