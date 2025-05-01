@@ -152,7 +152,7 @@ namespace GeneralFunctions
         {
             return ScriptHelper.SelectTable(tables: tables, preselect: preselect, label: label);
         }
-        public static Measure SelectMeasure(Measure preselect = null, string label = "Select Measure")
+        public static Measure SelectMeasure(Measure preselect = null, string label = "Select Table")
         {
             return ScriptHelper.SelectMeasure(preselect: preselect, label: label);
         }
