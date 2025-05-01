@@ -28,18 +28,13 @@ namespace GeneralFunctions
         // NOCOPY    the following is an example method where you can build extra logic
         public static Table CreateCalcTable(Model model, string tableName, string tableExpression)
         {
-            if(!model.Tables.Any(t => t.Name == tableName))
-            {
-                return model.AddCalculatedTable(tableName, tableExpression);
-            }
-            else
-            {
-                return model.Tables.Where(t => t.Name == tableName).First();
-            }
+            return model.Tables.FirstOrDefault(t =>
+                                string.Equals(t.Name, tableName, StringComparison.OrdinalIgnoreCase)) //case insensitive search
+                                ?? model.AddCalculatedTable(tableName, tableExpression);
         }
 
         public static string GetNameFromUser(string Prompt, string Title, string DefaultResponse)
-        {    
+        {
             string response = Interaction.InputBox(Prompt, Title, DefaultResponse, 740, 400);
             return response;
         }
@@ -79,8 +74,8 @@ namespace GeneralFunctions
             //check that indeed one macro was selected
             if (select == null)
             {
-                Info("You cancelled!");
-                
+                Info("You Cancelled!");
+
             }
 
             return select;
@@ -89,16 +84,15 @@ namespace GeneralFunctions
 
         public static IEnumerable<Table> GetDateTables(Model model)
         {
-            IEnumerable<Table> dateTables = null as IEnumerable<Table>;
+            var dateTables = model.Tables
+                .Where(t => t.DataCategory == "Time" &&
+                       t.Columns.Any(c => c.IsKey && c.DataType == DataType.DateTime))
+                .ToList();
 
-            if (model.Tables.Any(t => t.DataCategory == "Time" && t.Columns.Any(c => c.IsKey == true)))
-            {
-                dateTables = model.Tables.Where(t => t.DataCategory == "Time" && t.Columns.Any(c => c.IsKey == true && c.DataType == DataType.DateTime));
-            }
-            else
+            if (!dateTables.Any())
             {
                 Error("No date table detected in the model. Please mark your date table(s) as date table");
-
+                return null;
             }
 
             return dateTables;
@@ -111,46 +105,20 @@ namespace GeneralFunctions
 
             IEnumerable<Table> matchTables = GetFilteredTables(tables, lambda);
 
-            if (matchTables == null)
-            {
-                return null;
-            }
-            else
-            {
-                return matchTables.First();
-            }
-
+            return GetFilteredTables(tables, lambda).FirstOrDefault();
         }
 
         public static IEnumerable<Table> GetFilteredTables(IEnumerable<Table> tables, Func<Table, bool> lambda)
         {
-            if (tables.Any(t => lambda(t)))
-            {
-                return tables.Where(t => lambda(t));
-            }
-            else
-            {
-                return null as IEnumerable<Table>;
-            }
+            var filteredTables = tables.Where(t => lambda(t));
+            return filteredTables.Any() ? filteredTables : null;
         }
 
         public static IEnumerable<Column> GetFilteredColumns(IEnumerable<Column> columns, Func<Column, bool> lambda, bool returnAllIfNoneFound = true)
         {
-            if (columns.Any(c => lambda(c)))
-            {
-                return columns.Where(c => lambda(c));
-            }
-            else
-            {
-                if (returnAllIfNoneFound)
-                {
-                    return columns;
-                }
-                else
-                {
-                    return null as IEnumerable<Column>;
-                }
-            }
+            var filteredColumns = columns.Where(c => lambda(c));
+
+            return filteredColumns.Any() || returnAllIfNoneFound ? filteredColumns : null;
 
         }
 
@@ -180,7 +148,7 @@ namespace GeneralFunctions
             ScriptHelper.Info(message: message, lineNumber: lineNumber);
         }
 
-        public static Table SelectTable(IEnumerable<Table> tables, Table preselect = null, string label = "Select Table")
+        public static Table SelectTable(IEnumerable<Table> tables, Table preselect = null, string label= "Select Table")
         {
             return ScriptHelper.SelectTable(tables: tables, preselect: preselect, label: label);
         }
