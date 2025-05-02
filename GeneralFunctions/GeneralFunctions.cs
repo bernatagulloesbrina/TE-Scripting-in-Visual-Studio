@@ -8,6 +8,10 @@ using TabularEditor.Scripting;
 using System.Reflection.Emit;
 using Microsoft.VisualBasic;
 using System.Windows.Forms;
+using Report.DTO;
+using System.IO;
+using Newtonsoft.Json;
+using static Report.DTO.VisualDto;
 
 namespace GeneralFunctions
 {
@@ -26,6 +30,7 @@ namespace GeneralFunctions
         // NOCOPY    in TE2 (at least up to 2.17.2) any method that accesses or modifies
         // NOCOPY    the model needs a reference to the model 
         // NOCOPY    the following is an example method where you can build extra logic
+              
         public static Table CreateCalcTable(Model model, string tableName, string tableExpression)
         {
             if(!model.Tables.Any(t => t.Name == tableName))
