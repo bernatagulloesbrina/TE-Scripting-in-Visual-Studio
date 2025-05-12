@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <LocalAppDataPath>$(LocalAppData)\TabularEditor\TOMWrapper14.dll</LocalAppDataPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="TOMWrapper14">
+      <HintPath>$(LocalAppDataPath)</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

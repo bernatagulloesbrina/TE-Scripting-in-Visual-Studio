@@ -12,7 +12,7 @@ using Report.DTO;
 using System.IO;
 using Newtonsoft.Json;
 using GeneralFunctions;
-using static Report.DTO.VisualDto;
+//using static Report.DTO.VisualDto;
 using System.Xml;
 
 namespace ReportFunctions
@@ -23,6 +23,8 @@ namespace ReportFunctions
     //these directives will be combined with the ones from the macro when using the CopyMacro script
     public static class Rx
     {
+        
+
         // NOCOPY    in TE2 (at least up to 2.17.2) any method that accesses or modifies
         // NOCOPY    the model needs a reference to the model 
         // NOCOPY    the following is an example method where you can build extra logic
@@ -84,7 +86,7 @@ namespace ReportFunctions
                                     VisualDto.Root visual = JsonConvert.DeserializeObject<VisualDto.Root>(visualJsonContent);
 
                                     VisualExtended visualExtended = new VisualExtended();
-                                    visualExtended.Visual = visual;
+                                    visualExtended.Content = visual;
                                     visualExtended.VisualFilePath = visualJsonPath;
 
                                     pageExtended.Visuals.Add(visualExtended);
@@ -148,23 +150,20 @@ namespace ReportFunctions
         public static void SaveVisual(VisualExtended visual)
         {
 
-            // Step 6: Backup the original JSON
-            File.Copy(visual.VisualFilePath, visual.VisualFilePath + ".backup", true);
-
             // Save new JSON, ignoring nulls
             string newJson = JsonConvert.SerializeObject(
                 visual.Content,
                 Newtonsoft.Json.Formatting.Indented,
                 new JsonSerializerSettings
                 {
+                    DefaultValueHandling = DefaultValueHandling.Ignore,
                     NullValueHandling = NullValueHandling.Ignore
+
                 }
             );
             File.WriteAllText(visual.VisualFilePath, newJson);
-
-
-            Info("Visual updated and saved successfully!");
         }
+
 
         public static string ReplacePlaceholders(string pageContents, Dictionary<string, string> placeholders)
         {

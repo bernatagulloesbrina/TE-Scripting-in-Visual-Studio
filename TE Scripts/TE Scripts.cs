@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TabularEditor.TOMWrapper;
 using TabularEditor.Scripting;
 using System.Windows.Forms;
@@ -14,11 +12,10 @@ using System.IO;
 using GeneralFunctions; //Uncomment if you use the custom class, add reference to the project too.
 using ReportFunctions;
 using Report.DTO;
-using Newtonsoft.Json;
 using System.Text.RegularExpressions;
 using Microsoft.VisualBasic;
-using static Report.DTO.VisualDto;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+
+
 
 // '2023-05-06 / B.Agullo / 
 //coding environment for Tabular Editor C# Scripts
@@ -29,102 +26,121 @@ namespace TE_Scripting
     public class TE_Scripts
     {
 
-        void test()
-        {
-            //using GeneralFunctions;
-            //using Report.DTO;
-            //using System.IO;
-
-            ReportExtended report = Rx.InitReport();
-            if (report == null) return;
-
-            IList<VisualExtended> visuals = (report.Pages ?? new List<PageExtended>())
-                .SelectMany(p => (p.Visuals ?? new List<VisualExtended>())).ToList(); 
-
-            foreach(VisualExtended visual in visuals)
-            {
-                IEnumerable<string> columns = visual.GetAllReferencedColumns();
-                IEnumerable<string> measures = visual.GetAllReferencedMeasures();
-                Output(columns);
-            }
-
-        }
-
         void fixBrokenFields()
         {
-
             //using GeneralFunctions;
             //using Report.DTO;
             //using System.IO;
-
+            //using Newtonsoft.Json.Linq;
+            
             ReportExtended report = Rx.InitReport();
             if (report == null) return;
 
-            // Gather all fields used in visuals
-            var allVisuals = (report.Pages ?? new List<PageExtended>())
+            var modifiedVisuals = new HashSet<VisualExtended>();
+
+            // Gather all visuals and all fields used in them
+            IList<VisualExtended> allVisuals = (report.Pages ?? new List<PageExtended>())
                 .SelectMany(p => p.Visuals ?? Enumerable.Empty<VisualExtended>())
                 .ToList();
 
-            var allReportMeasures = allVisuals
+            IList<string> allReportMeasures = allVisuals
                 .SelectMany(v => v.GetAllReferencedMeasures())
                 .Distinct()
                 .ToList();
 
-            var allReportColumns = allVisuals
+            IList<string> allReportColumns = allVisuals
                 .SelectMany(v => v.GetAllReferencedColumns())
                 .Distinct()
                 .ToList();
 
-            var allModelMeasures = Model.AllMeasures
-                .Select(m => m.DaxObjectFullName)
+            IList<string> allModelMeasures = Model.AllMeasures
+                .Select(m => $"{m.Table.DaxObjectFullName}[{m.Name}]")
                 .ToList();
 
-            var allModelColumns = Model.AllColumns
+            IList<string> allModelColumns = Model.AllColumns
                 .Select(c => c.DaxObjectFullName)
                 .ToList();
 
-            // Detect broken field references
-            var brokenMeasures = allReportMeasures
+            IList<string> brokenMeasures = allReportMeasures
                 .Where(m => !allModelMeasures.Contains(m))
                 .ToList();
 
-            var brokenColumns = allReportColumns
+            IList<string> brokenColumns = allReportColumns
                 .Where(c => !allModelColumns.Contains(c))
                 .ToList();
 
-            // Prompt user to fix each broken measure
+            if(!brokenMeasures.Any() && !brokenColumns.Any())
+            {
+                Info("No broken measures or columns found.");
+                return;
+            }
+
+
+            // Replacement maps for filterConfig patch
+            var tableReplacementMap = new Dictionary<string, string>();
+            var fieldReplacementMap = new Dictionary<string, string>();
+
             foreach (string brokenMeasure in brokenMeasures)
             {
-                Measure replacement = SelectMeasure(label: $"{brokenMeasure} was not found in the model. What's the new measure?");
+                Measure replacement = 
+                    SelectMeasure(label: $"{brokenMeasure} was not found in the model. What's the new measure?");
                 if (replacement == null) { Error("You Cancelled"); return; }
+
+                string oldTable = brokenMeasure.Split('[')[0].Trim('\'');
+                string oldField = brokenMeasure.Split('[', ']')[1];
+
+                tableReplacementMap[oldTable] = replacement.Table.Name;
+                fieldReplacementMap[oldField] = replacement.Name;
 
                 foreach (var visual in allVisuals)
                 {
                     if (visual.GetAllReferencedMeasures().Contains(brokenMeasure))
                     {
-                        visual.ReplaceField(brokenMeasure, replacement);
-                        Rx.SaveVisual(visual);
+                        visual.ReplaceMeasure(brokenMeasure, replacement, modifiedVisuals);
                     }
                 }
             }
 
-            // Prompt user to fix each broken column
             foreach (string brokenColumn in brokenColumns)
             {
-                Column replacement = SelectColumn(Model.AllColumns,label: $"{brokenColumn} was not found in the model. What's the new column?");
+                Column replacement = SelectColumn(Model.AllColumns, label: $"{brokenColumn} was not found in the model. What's the new column?");
                 if (replacement == null) { Error("You Cancelled"); return; }
+
+                string oldTable = brokenColumn.Split('[')[0].Trim('\'');
+                string oldField = brokenColumn.Split('[', ']')[1];
+
+                tableReplacementMap[oldTable] = replacement.Table.Name;
+                fieldReplacementMap[oldField] = replacement.Name;
 
                 foreach (var visual in allVisuals)
                 {
                     if (visual.GetAllReferencedColumns().Contains(brokenColumn))
                     {
-                        visual.ReplaceField(brokenColumn, replacement);
-                        Rx.SaveVisual(visual);
+                        visual.ReplaceColumn(brokenColumn, replacement, modifiedVisuals);
+                        
                     }
                 }
+
+                
             }
+
+            // Apply raw text-based replacement to filterConfig JSON strings
+            foreach (var visual in allVisuals)
+            {
+                visual.ReplaceInFilterConfigRaw(tableReplacementMap, fieldReplacementMap, modifiedVisuals);
+            }
+
+            // Save modified visuals
+            foreach (var visual in modifiedVisuals)
+            {
+                Rx.SaveVisual(visual);
+            }
+
+            Output($"{modifiedVisuals.Count} visuals were modified.");
         }
 
+        
+        
 
         void changeCoordinatesOfVisual()
         {
@@ -256,8 +272,8 @@ namespace TE_Scripting
                 var buttonPanel = new Panel();
                 buttonPanel.Dock = DockStyle.Bottom;
                 buttonPanel.Height = 30;
-                var okButton = new Button() { DialogResult = DialogResult.OK, Text = "OK" };
-                var cancelButton = new Button() { DialogResult = DialogResult.Cancel, Text = "Cancel", Left = 80 };
+                var okButton = new System.Windows.Forms.Button() { DialogResult = DialogResult.OK, Text = "OK" };
+                var cancelButton = new System.Windows.Forms.Button() { DialogResult = DialogResult.Cancel, Text = "Cancel", Left = 80 };
                 var listbox = new ListBox();
                 listbox.Dock = DockStyle.Fill;
                 listbox.Items.AddRange(options.ToArray());
