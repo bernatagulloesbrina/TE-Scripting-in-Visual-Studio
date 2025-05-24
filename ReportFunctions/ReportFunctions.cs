@@ -82,7 +82,6 @@ namespace ReportFunctions
                                 try
                                 {
                                     string visualJsonContent = File.ReadAllText(visualJsonPath);
-                                    //VisualDto.Root visual = JsonConvert.DeserializeObject<VisualDto.Root>(visualJsonContent);
                                     VisualDto.Root visual = JsonConvert.DeserializeObject<VisualDto.Root>(visualJsonContent);
 
                                     VisualExtended visualExtended = new VisualExtended();

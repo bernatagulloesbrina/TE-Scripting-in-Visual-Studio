@@ -701,27 +701,15 @@ namespace Report.DTO
     public class PageExtended
     {
         public PageDto Page { get; set; }
-        public IList<VisualExtended> Visuals { get; set; }
+        public IList<VisualExtended> Visuals { get; set; } = new List<VisualExtended>();
         public string PageFilePath { get; set; }
-
-        public PageExtended()
-        {
-            Visuals = new List<VisualExtended>();
-        }
     }
 
     public class ReportExtended
     {
-        public IList<PageExtended> Pages { get; set; }
+        public IList<PageExtended> Pages { get; set; } = new List<PageExtended>();
         public string PagesFilePath { get; set; }
-
         public PagesDto PagesConfig { get; set; }
-
-        public ReportExtended()
-        {
-            Pages = new List<PageExtended>();
-
-        }
     }
 
 }

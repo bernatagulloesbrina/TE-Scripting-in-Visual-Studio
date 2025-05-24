@@ -6,6 +6,7 @@
     <AssemblyName>GeneralFunctions</AssemblyName>
     <OutputType>Library</OutputType>
     <Deterministic>true</Deterministic>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <ItemGroup>
