@@ -26,6 +26,166 @@ namespace TE_Scripting
     public class TE_Scripts
     {
 
+        //using GeneralFunctions;
+        //using Report.DTO;
+        //using System.IO;
+        //using Newtonsoft.Json.Linq;
+
+        //using GeneralFunctions; //using Report.DTO; //using System.IO;//using Newtonsoft.Json.Linq;
+        void openVisualJsonFile()
+        {
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+
+            //2025-05-25/B.Agullo
+            //this script allows the user to open the JSON file of one or more visuals in the report.
+            //see https://www.esbrina-ba.com/pbir-scripts-to-replace-field-and-open-visual-json-files/ for reference on how to use it
+
+            // Step 1: Initialize the report object
+            ReportExtended report = Rx.InitReport();
+            if (report == null) return;
+
+            // Step 2: Gather all visuals with page info
+            var allVisuals = report.Pages
+                .SelectMany(p => p.Visuals.Select(v => new { Page = p.Page, Visual = v }))
+                .ToList();
+
+            if (allVisuals.Count == 0)
+            {
+                Info("No visuals found in the report.");
+                return;
+            }
+
+            // Step 3: Prepare display names for selection
+            var visualDisplayList = allVisuals.Select(x =>
+                String.Format(@"{0} - {1} ({2}, {3})", x.Page.DisplayName, x.Visual.Content.Visual.VisualType, (int)x.Visual.Content.Position.X, (int)x.Visual.Content.Position.Y)
+            ).ToList();
+
+            // Step 4: Let the user select one or more visuals
+            List<string> selected = Fx.ChooseStringMultiple(OptionList: visualDisplayList, Label: "Select visuals to open JSON files");
+            if (selected == null || selected.Count == 0)
+            {
+                Info("No visuals selected.");
+                return;
+            }
+
+            // Step 5: For each selected visual, open its JSON file
+            foreach (var visualEntry in allVisuals)
+            {
+                string display = String.Format(@"{0} - {1} ({2}, {3})", visualEntry.Page.DisplayName, visualEntry.Visual.Content.Visual.VisualType, (int)visualEntry.Visual.Content.Position.X, (int)visualEntry.Visual.Content.Position.Y);
+                if (selected.Contains(display))
+                {
+                    string jsonPath = visualEntry.Visual.VisualFilePath;
+                    if (!File.Exists(jsonPath))
+                    {
+                        Error(String.Format(@"JSON file not found: {0}", jsonPath));
+                        continue;
+                    }
+                    System.Diagnostics.Process.Start(jsonPath);
+                }
+            }
+        }
+        
+        void replaceField() 
+        {
+
+            //2025-05-25/B.Agullo
+            //provided a definition.pbir file, this script allows the user to replace a measure in all visuals that use it with another measure.
+            //when executing the script you must be connected to the semantic model to which the report is connected to or one that is identical. 
+            //see https://www.esbrina-ba.com/pbir-scripts-to-replace-field-and-open-visual-json-files/ for reference on how to use it
+
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+
+            ReportExtended report = Rx.InitReport();
+            if (report == null) return;
+
+            var modifiedVisuals = new HashSet<VisualExtended>();
+
+            var allVisuals = report.Pages
+             .SelectMany(p => p.Visuals.Select(v => new { Page = p.Page, Visual = v }))
+             .ToList();
+
+
+            IList<string> allReportMeasures = allVisuals
+                .SelectMany(x => x.Visual.GetAllReferencedMeasures())
+                .Distinct()
+                .ToList();
+
+            string measureToReplace = Fx.ChooseString(
+                OptionList: allReportMeasures,
+                "Select a measure to replace"
+            );
+
+            if (string.IsNullOrEmpty(measureToReplace))
+            {
+                Error("No measure selected.");
+                return;
+            }
+
+            Measure replacementMeasure = SelectMeasure(
+                label: $"Select a replacement for '{measureToReplace}'"
+            );
+
+            if (replacementMeasure == null)
+            {
+                Error("No replacement measure selected.");
+                return;
+            }
+
+            var visualsUsingMeasure = allVisuals
+                .Where(x => x.Visual.GetAllReferencedMeasures().Contains(measureToReplace))
+                .Select(x => new
+                {
+                    Display = $"{x.Page.DisplayName} - {x.Visual.Content.Visual.VisualType} ({(int)x.Visual.Content.Position.X}, {(int)x.Visual.Content.Position.Y})",
+                    Visual = x.Visual
+                })
+                .ToList();
+
+            if (visualsUsingMeasure.Count == 0)
+            {
+                Info($"No visuals use the measure '{measureToReplace}'.");
+                return;
+            }
+
+            // Step 2: Let the user choose one or more visuals
+            var options = visualsUsingMeasure.Select(v => v.Display).ToList();
+            List<string> selected = Fx.ChooseStringMultiple(options, "Select visuals to update");
+
+            if (selected == null || selected.Count == 0)
+            {
+                Info("No visuals selected.");
+                return;
+            }
+
+            // Step 3: Apply replacement only to selected visuals
+            foreach (var visualEntry in visualsUsingMeasure)
+            {
+                if (selected.Contains(visualEntry.Display))
+                {
+                    visualEntry.Visual.ReplaceMeasure(measureToReplace, replacementMeasure);
+                    modifiedVisuals.Add(visualEntry.Visual);
+                }
+            }
+
+            // Save modified visuals
+            foreach (var visual in modifiedVisuals)
+            {
+                Rx.SaveVisual(visual);
+            }
+
+            Output($"{modifiedVisuals.Count} visuals were modified.");
+
+
+
+
+        }
+
+
         void fixBrokenFields()
         {
             //using GeneralFunctions;
@@ -310,15 +470,11 @@ namespace TE_Scripting
         void CopyMacroFromVSFileWithDll()
         {
 
-            // NOCOPY Compile the project and get the path to TE Scripts.dll in <PROJECT FOLDER>\bin\Debug\TE Scripts.dll
-            // NOCOPY replace 
-            //#r "I:\La meva unitat\Power BI\Fixing Axis\c#\TE Scripts\bin\Debug\TE Scripts.dll"
+            // NOCOPY replace <PROJECT FOLDER> (both instances) with the path to the folder where the .sln file is stored.
+            //#r "<PROJECT FOLDER>\TE Scripts\bin\Debug\TE Scripts.dll"
             //using TE_Scripting;
 
-            // NOCOPY replace <HERE FULL PATH TO TE_Scripts.cs FILE> by the full path to the TE_Scripts.cs file
-            // NOCOPY replace <HERE FULL PATH TO GeneralFunctions.cs FILE> by the full path to the GeneralFunctions.cs file
-
-            string baseFolderPath = @"I:\La meva unitat\Power BI\Fixing Axis\c#";
+            string baseFolderPath = @"<PROJECT FOLDER>";
             string macroFilePath = String.Format(@"{0}\TE Scripts\TE Scripts.cs", baseFolderPath);
             string generalFunctionsClassFilePath = String.Format(@"{0}\GeneralFunctions\GeneralFunctions.cs", baseFolderPath);
             string reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);

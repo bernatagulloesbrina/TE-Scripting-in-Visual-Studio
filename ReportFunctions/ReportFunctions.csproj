@@ -25,6 +25,16 @@
     </Reference>
   </ItemGroup>
 
+  <PropertyGroup>
+  <LangVersion>7.3</LangVersion>
+</PropertyGroup>
+
+<ItemGroup>
+  <Compile Update="ReportFunctions.cs">
+    <LangVersion>12.0</LangVersion>
+  </Compile>
+</ItemGroup>
+  
   <Import Project="..\TE.References.props" />
 
 </Project>

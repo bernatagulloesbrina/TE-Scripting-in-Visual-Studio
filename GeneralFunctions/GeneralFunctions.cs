@@ -45,47 +45,89 @@ namespace GeneralFunctions
         }
 
 
-        public static string ChooseString(IList<string> OptionList)
+        public static string ChooseString(IList<string> OptionList, string Label = "Choose item")
         {
-            Func<IList<string>, string, string> SelectString = (IList<string> options, string title) =>
+            return ChooseStringInternal(OptionList, MultiSelect: false, Label:Label) as string;
+        }
+
+        public static List<string> ChooseStringMultiple(IList<string> OptionList, string Label = "Choose item(s)")
+        {
+            return ChooseStringInternal(OptionList, MultiSelect:true, Label:Label) as List<string>;
+        }
+
+        private static object ChooseStringInternal(IList<string> OptionList, bool MultiSelect, string Label = "Choose item(s)")
+        {
+            Form form = new Form
             {
-                var form = new Form();
-                form.Text = title;
-                var buttonPanel = new Panel();
-                buttonPanel.Dock = DockStyle.Bottom;
-                buttonPanel.Height = 30;
-                var okButton = new Button() { DialogResult = DialogResult.OK, Text = "OK" };
-                var cancelButton = new Button() { DialogResult = DialogResult.Cancel, Text = "Cancel", Left = 80 };
-                var listbox = new ListBox();
-                listbox.Dock = DockStyle.Fill;
-                listbox.Items.AddRange(options.ToArray());
-                listbox.SelectedItem = options[0];
-
-                form.Controls.Add(listbox);
-                form.Controls.Add(buttonPanel);
-                buttonPanel.Controls.Add(okButton);
-                buttonPanel.Controls.Add(cancelButton);
-
-                var result = form.ShowDialog();
-                if (result == DialogResult.Cancel) return null;
-                return listbox.SelectedItem.ToString();
+                Text =Label,
+                Width = 400,
+                Height = 500,
+                StartPosition = FormStartPosition.CenterScreen,
+                Padding = new Padding(20)
             };
 
+            ListBox listbox = new ListBox
+            {
+                Dock = DockStyle.Fill,
+                SelectionMode = MultiSelect ? SelectionMode.MultiExtended : SelectionMode.One
+            };
+            listbox.Items.AddRange(OptionList.ToArray());
+            if (!MultiSelect && OptionList.Count > 0)
+                listbox.SelectedItem = OptionList[0];
 
+            FlowLayoutPanel buttonPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 40,
+                FlowDirection = FlowDirection.LeftToRight,
+                Padding = new Padding(10)
+            };
 
-            //let the user select the name of the macro to copy
-            String select = SelectString(OptionList, "Choose a macro");
+            Button selectAllButton = new Button { Text = "Select All", Visible = MultiSelect };
+            Button selectNoneButton = new Button { Text = "Select None", Visible = MultiSelect };
+            Button okButton = new Button { Text = "OK", DialogResult = DialogResult.OK };
+            Button cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel };
 
-            //check that indeed one macro was selected
-            if (select == null)
+            selectAllButton.Click += delegate
+            {
+                for (int i = 0; i < listbox.Items.Count; i++)
+                    listbox.SetSelected(i, true);
+            };
+
+            selectNoneButton.Click += delegate
+            {
+                for (int i = 0; i < listbox.Items.Count; i++)
+                    listbox.SetSelected(i, false);
+            };
+
+            buttonPanel.Controls.Add(selectAllButton);
+            buttonPanel.Controls.Add(selectNoneButton);
+            buttonPanel.Controls.Add(okButton);
+            buttonPanel.Controls.Add(cancelButton);
+
+            form.Controls.Add(listbox);
+            form.Controls.Add(buttonPanel);
+
+            DialogResult result = form.ShowDialog();
+            if (result == DialogResult.Cancel)
             {
                 Info("You Cancelled!");
-
+                return null;
             }
 
-            return select;
-
+            if (MultiSelect)
+            {
+                List<string> selectedItems = new List<string>();
+                foreach (object item in listbox.SelectedItems)
+                    selectedItems.Add(item.ToString());
+                return selectedItems;
+            }
+            else
+            {
+                return listbox.SelectedItem != null ? listbox.SelectedItem.ToString() : null;
+            }
         }
+
 
         public static IEnumerable<Table> GetDateTables(Model model)
         {

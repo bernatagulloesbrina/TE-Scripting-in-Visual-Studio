@@ -72,6 +72,13 @@ namespace ReportFunctions
                         pageExtended.PageFilePath = pageJsonPath;
 
                         string visualsPath = Path.Combine(folder, "visuals");
+
+                        if (!Directory.Exists(visualsPath))
+                        {
+                            report.Pages.Add(pageExtended); // still add the page
+                            continue; // skip visual loading
+                        }
+
                         List<string> visualSubfolders = Directory.GetDirectories(visualsPath).ToList();
 
                         foreach (string visualFolder in visualSubfolders)

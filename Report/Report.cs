@@ -52,7 +52,10 @@ namespace Report.DTO
             [JsonProperty("name")] public string Name { get; set; }
             [JsonProperty("position")] public Position Position { get; set; }
             [JsonProperty("visual")] public Visual Visual { get; set; }
+            [JsonProperty("visualContainerObjects")] public object VisualContainerObjects { get; set; }
             [JsonProperty("filterConfig")] public object FilterConfig { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Position
@@ -63,34 +66,49 @@ namespace Report.DTO
             [JsonProperty("height")] public double Height { get; set; }
             [JsonProperty("width")] public double Width { get; set; }
             [JsonProperty("tabOrder")] public int TabOrder { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Visual
         {
-            [JsonProperty("visualType")] public string VisualType { get; set; }
-            [JsonProperty("query")] public Query Query { get; set; }
-            [JsonProperty("objects")] public Objects Objects { get; set; }
-            [JsonProperty("drillFilterOtherVisuals")] public bool DrillFilterOtherVisuals { get; set; }
+            [JsonProperty("visualType", Order = 1)] public string VisualType { get; set; }
+            [JsonProperty("query", Order = 2)] public Query Query { get; set; }
+            [JsonProperty("objects", Order = 3)] public Objects Objects { get; set; }
+            [JsonProperty("drillFilterOtherVisuals", Order = 4)] public bool DrillFilterOtherVisuals { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Query
         {
             [JsonProperty("queryState")] public QueryState QueryState { get; set; }
             [JsonProperty("sortDefinition")] public SortDefinition SortDefinition { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class QueryState
         {
-            [JsonProperty("Y")] public VisualDto.ProjectionsSet Y { get; set; }
-            [JsonProperty("Values")] public VisualDto.ProjectionsSet Values { get; set; }
-            [JsonProperty("Category")] public VisualDto.ProjectionsSet Category { get; set; }
-            [JsonProperty("Series")] public VisualDto.ProjectionsSet Series { get; set; }
-            [JsonProperty("Data")] public VisualDto.ProjectionsSet Data { get; set; }
+            [JsonProperty("Rows", Order = 1)] public VisualDto.ProjectionsSet Rows { get; set; }
+            [JsonProperty("Category", Order = 2)] public VisualDto.ProjectionsSet Category { get; set; }
+            [JsonProperty("Y", Order = 3)] public VisualDto.ProjectionsSet Y { get; set; }
+            [JsonProperty("Y2", Order = 4)] public VisualDto.ProjectionsSet Y2 { get; set; }
+            [JsonProperty("Values", Order = 5)] public VisualDto.ProjectionsSet Values { get; set; }
+            
+            [JsonProperty("Series", Order = 6)] public VisualDto.ProjectionsSet Series { get; set; }
+            [JsonProperty("Data", Order = 7)] public VisualDto.ProjectionsSet Data { get; set; }
+
+            
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class ProjectionsSet
         {
             [JsonProperty("projections")] public List<VisualDto.Projection> Projections { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Projection
@@ -100,6 +118,8 @@ namespace Report.DTO
             [JsonProperty("nativeQueryRef")] public string NativeQueryRef { get; set; }
             [JsonProperty("active")] public bool? Active { get; set; }
             [JsonProperty("hidden")] public bool? Hidden { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Field
@@ -116,6 +136,8 @@ namespace Report.DTO
         {
             [JsonProperty("Expression")] public VisualDto.Expression Expression { get; set; }
             [JsonProperty("Function")] public int Function { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class NativeVisualCalculation
@@ -123,30 +145,42 @@ namespace Report.DTO
             [JsonProperty("Language")] public string Language { get; set; }
             [JsonProperty("Expression")] public string Expression { get; set; }
             [JsonProperty("Name")] public string Name { get; set; }
+
+            [JsonProperty("DataType")] public string DataType { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class MeasureObject
         {
             [JsonProperty("Expression")] public VisualDto.Expression Expression { get; set; }
             [JsonProperty("Property")] public string Property { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class ColumnField
         {
             [JsonProperty("Expression")] public VisualDto.Expression Expression { get; set; }
             [JsonProperty("Property")] public string Property { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Expression
         {
             [JsonProperty("Column")] public ColumnExpression Column { get; set; }
             [JsonProperty("SourceRef")] public VisualDto.SourceRef SourceRef { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class ColumnExpression
         {
             [JsonProperty("Expression")] public VisualDto.SourceRef Expression { get; set; }
             [JsonProperty("Property")] public string Property { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class SourceRef
@@ -162,12 +196,16 @@ namespace Report.DTO
         {
             [JsonProperty("sort")] public List<VisualDto.Sort> Sort { get; set; }
             [JsonProperty("isDefaultSort")] public bool IsDefaultSort { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Sort
         {
             [JsonProperty("field")] public VisualDto.Field Field { get; set; }
             [JsonProperty("direction")] public string Direction { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Objects
@@ -193,7 +231,9 @@ namespace Report.DTO
 
         public class ObjectProperties
         {
-            [JsonProperty("properties")] public Dictionary<string, VisualDto.VisualObjectProperty> Properties { get; set; }
+            [JsonProperty("properties")]
+            [JsonConverter(typeof(PropertiesConverter))]
+            public Dictionary<string, object> Properties { get; set; }
 
             [JsonProperty("selector")]
             public Selector Selector { get; set; }
@@ -202,35 +242,71 @@ namespace Report.DTO
             [JsonExtensionData] public IDictionary<string, JToken> ExtensionData { get; set; }
         }
 
+
+
+
         public class VisualObjectProperty
         {
             [JsonProperty("expr")] public Field Expr { get; set; }
             [JsonProperty("solid")] public SolidColor Solid { get; set; }
             [JsonProperty("color")] public ColorExpression Color { get; set; }
 
+            [JsonProperty("paragraphs")]
+            public List<Paragraph> Paragraphs { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class Paragraph
+        {
+            [JsonProperty("textRuns")]
+            public List<TextRun> TextRuns { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class TextRun
+        {
+            [JsonProperty("value")]
+            public string Value { get; set; }
+
+            [JsonProperty("url")]
+            public string Url { get; set; }
+
+            [JsonProperty("textStyle")]
+            public Dictionary<string, object> TextStyle { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class SolidColor
         {
             [JsonProperty("color")] public ColorExpression Color { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class ColorExpression
         {
             [JsonProperty("expr")]
             public VisualColorExprWrapper Expr { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class FillRuleExprWrapper
         {
             [JsonProperty("FillRule")] public FillRuleExpression FillRule { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class FillRuleExpression
         {
             [JsonProperty("Input")] public VisualDto.Field Input { get; set; }
             [JsonProperty("FillRule")] public Dictionary<string, object> FillRule { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class VisualColorExprWrapper
@@ -249,6 +325,8 @@ namespace Report.DTO
 
             [JsonProperty("FillRule")]
             public FillRuleExpression FillRule { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
 
@@ -277,7 +355,52 @@ namespace Report.DTO
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
+        public class PropertiesConverter : JsonConverter
+        {
+            public override bool CanConvert(Type objectType) => objectType == typeof(Dictionary<string, object>);
 
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                var result = new Dictionary<string, object>();
+                var jObj = JObject.Load(reader);
+
+                foreach (var prop in jObj.Properties())
+                {
+                    if (prop.Name == "paragraphs")
+                    {
+                        var paragraphs = prop.Value.ToObject<List<Paragraph>>(serializer);
+                        result[prop.Name] = paragraphs;
+                    }
+                    else
+                    {
+                        var visualProp = prop.Value.ToObject<VisualObjectProperty>(serializer);
+                        result[prop.Name] = visualProp;
+                    }
+                }
+
+                return result;
+            }
+
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+            {
+                var dict = (Dictionary<string, object>)value;
+                writer.WriteStartObject();
+
+                foreach (var kvp in dict)
+                {
+                    writer.WritePropertyName(kvp.Key);
+
+                    if (kvp.Value is VisualObjectProperty vo)
+                        serializer.Serialize(writer, vo);
+                    else if (kvp.Value is List<Paragraph> ps)
+                        serializer.Serialize(writer, ps);
+                    else
+                        serializer.Serialize(writer, kvp.Value);
+                }
+
+                writer.WriteEndObject();
+            }
+        }
     }
 
     public class VisualExtended
@@ -295,9 +418,11 @@ namespace Report.DTO
             {
                 fields.AddRange(GetFieldsFromProjections(queryState.Values));
                 fields.AddRange(GetFieldsFromProjections(queryState.Y));
+                fields.AddRange(GetFieldsFromProjections(queryState.Y2));
                 fields.AddRange(GetFieldsFromProjections(queryState.Category));
                 fields.AddRange(GetFieldsFromProjections(queryState.Series));
                 fields.AddRange(GetFieldsFromProjections(queryState.Data));
+                fields.AddRange(GetFieldsFromProjections(queryState.Rows));
             }
 
             var sortList = Content?.Visual?.Query?.SortDefinition?.Sort;
@@ -338,30 +463,50 @@ namespace Report.DTO
             {
                 if (obj.Properties == null) continue;
 
-                foreach (var prop in obj.Properties.Values)
+                foreach (var val in obj.Properties.Values)
                 {
-                    if (prop?.Expr != null)
+                    var prop = val as VisualDto.VisualObjectProperty;
+                    if (prop == null) continue;
+
+                    if (prop.Expr != null)
                     {
-                        if (prop.Expr.Measure != null) yield return new VisualDto.Field { Measure = prop.Expr.Measure };
-                        if (prop.Expr.Column != null) yield return new VisualDto.Field { Column = prop.Expr.Column };
+                        if (prop.Expr.Measure != null)
+                            yield return new VisualDto.Field { Measure = prop.Expr.Measure };
+
+                        if (prop.Expr.Column != null)
+                            yield return new VisualDto.Field { Column = prop.Expr.Column };
                     }
 
-                    if (prop?.Color?.Expr?.FillRule?.Input != null)
+                    if (prop.Color != null &&
+                        prop.Color.Expr != null &&
+                        prop.Color.Expr.FillRule != null &&
+                        prop.Color.Expr.FillRule.Input != null)
                     {
                         yield return prop.Color.Expr.FillRule.Input;
                     }
 
-                    if (prop?.Solid?.Color?.Expr?.FillRule?.Input != null)
+                    if (prop.Solid != null &&
+                        prop.Solid.Color != null &&
+                        prop.Solid.Color.Expr != null &&
+                        prop.Solid.Color.Expr.FillRule != null &&
+                        prop.Solid.Color.Expr.FillRule.Input != null)
                     {
                         yield return prop.Solid.Color.Expr.FillRule.Input;
                     }
-                    // Color measure (outside FillRule)
-                    var solidExpr = prop.Solid?.Color?.Expr;
-                    if (solidExpr?.Measure != null)
-                        yield return new VisualDto.Field { Measure = solidExpr.Measure };
 
-                    if (solidExpr?.Column != null)
-                        yield return new VisualDto.Field { Column = solidExpr.Column };
+                    var solidExpr = prop.Solid != null &&
+                                    prop.Solid.Color != null
+                                    ? prop.Solid.Color.Expr
+                                    : null;
+
+                    if (solidExpr != null)
+                    {
+                        if (solidExpr.Measure != null)
+                            yield return new VisualDto.Field { Measure = solidExpr.Measure };
+
+                        if (solidExpr.Column != null)
+                            yield return new VisualDto.Field { Column = solidExpr.Column };
+                    }
                 }
             }
         }
@@ -517,7 +662,7 @@ namespace Report.DTO
                     if (!string.IsNullOrEmpty(entity) && !string.IsNullOrEmpty(prop))
                     {
                         proj.QueryRef = $"{entity}.{prop}";
-                        proj.NativeQueryRef = prop;
+                        //proj.NativeQueryRef = prop;
                     }
 
                     wasModified = true;
@@ -529,6 +674,9 @@ namespace Report.DTO
 
             foreach (var proj in query?.QueryState?.Y?.Projections ?? Enumerable.Empty<VisualDto.Projection>())
                 UpdateProjection(proj);
+            
+            foreach (var proj in query?.QueryState?.Y2?.Projections ?? Enumerable.Empty<VisualDto.Projection>())
+                UpdateProjection(proj);
 
             foreach (var proj in query?.QueryState?.Category?.Projections ?? Enumerable.Empty<VisualDto.Projection>())
                 UpdateProjection(proj);
@@ -537,6 +685,9 @@ namespace Report.DTO
                 UpdateProjection(proj);
 
             foreach (var proj in query?.QueryState?.Data?.Projections ?? Enumerable.Empty<VisualDto.Projection>())
+                UpdateProjection(proj);
+
+            foreach (var proj in query?.QueryState?.Rows?.Projections ?? Enumerable.Empty<VisualDto.Projection>())
                 UpdateProjection(proj);
 
             foreach (var sort in query?.SortDefinition?.Sort ?? Enumerable.Empty<VisualDto.Sort>())
@@ -562,7 +713,7 @@ namespace Report.DTO
 
             foreach (var obj in AllObjectProperties())
             {
-                foreach (var prop in obj.Properties?.Values ?? Enumerable.Empty<VisualDto.VisualObjectProperty>())
+                foreach (var prop in obj.Properties.Values.OfType<VisualDto.VisualObjectProperty>())
                 {
                     var field = isMeasure ? new VisualDto.Field { Measure = prop.Expr?.Measure } : new VisualDto.Field { Column = prop.Expr?.Column };
                     if (ToFieldKey(field) == oldFieldKey)
