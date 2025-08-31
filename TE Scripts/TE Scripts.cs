@@ -14,6 +14,8 @@ using ReportFunctions;
 using Report.DTO;
 using System.Text.RegularExpressions;
 using Microsoft.VisualBasic;
+using TabularEditor;
+using static Report.DTO.VisualDto;
 
 
 
@@ -25,13 +27,569 @@ namespace TE_Scripting
 {
     public class TE_Scripts
     {
+        
+        void copyHeaderFormatting()
+        {
 
-        //using GeneralFunctions;
-        //using Report.DTO;
-        //using System.IO;
-        //using Newtonsoft.Json.Linq;
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
 
-        //using GeneralFunctions; //using Report.DTO; //using System.IO;//using Newtonsoft.Json.Linq;
+
+            // Step 1: Initialize report
+            ReportExtended report = Rx.InitReport();
+            if (report == null) return;
+
+            VisualExtended selectedVisual = Rx.SelectTableVisual(report);
+            if(selectedVisual == null) return;
+
+            // Step 2: Extract all headers from projections (not just those with formatting)
+            var projectionHeaders = selectedVisual.Content?.Visual?.Query?.QueryState?.Values?.Projections
+                .Select(p => p.QueryRef)
+                .Where(h => !string.IsNullOrEmpty(h))
+                .Distinct()
+                .ToList();
+
+            if (projectionHeaders == null || projectionHeaders.Count == 0)
+            {
+                Error("No headers found in the visual projections.");
+                return;
+            }
+
+            // Step 3: Extract all displayed headers (with formatting objects)
+            var formattedHeaders = selectedVisual.Content?.Visual?.Objects?.ColumnFormatting?
+                .Select(cf => cf.Selector?.Metadata)
+                .Where(h => !string.IsNullOrEmpty(h))
+                .Distinct()
+                .ToList();
+
+            // Step 4: Let user choose the source header for formatting (from all projection headers)
+            string sourceHeader = Fx.ChooseString(
+                OptionList: projectionHeaders,
+                label: "Select the header to copy formatting from"
+            );
+            if (string.IsNullOrEmpty(sourceHeader)) return;
+
+            // Step 5: Let user choose target headers (multi-select, exclude source)
+            List<string> targetHeaders = Fx.ChooseStringMultiple(
+                OptionList: projectionHeaders.Where(h => h != sourceHeader).ToList(),
+                label: "Select headers to apply the formatting to"
+            );
+            if (targetHeaders == null || targetHeaders.Count == 0)
+            {
+                Info("No target headers selected.");
+                return;
+            }
+
+            // Step 6: Get source formatting (excluding selector)
+            var sourceFormatting = selectedVisual.Content.Visual.Objects.ColumnFormatting
+                .FirstOrDefault(cf => cf.Selector?.Metadata == sourceHeader);
+
+            if (sourceFormatting == null)
+            {
+                Error("Source header formatting not found.");
+                return;
+            }
+
+            // Step 7: Apply formatting to target headers
+            int updatedCount = 0;
+            foreach (var targetHeader in targetHeaders)
+            {
+                var targetFormatting = selectedVisual.Content.Visual.Objects.ColumnFormatting
+                    .FirstOrDefault(cf => cf.Selector != null && cf.Selector.Metadata == targetHeader);
+
+                if (targetFormatting != null)
+                {
+                    // Copy all properties except Selector
+                    var sourceProps = typeof(VisualDto.ObjectProperties).GetProperties();
+                    foreach (var prop in sourceProps)
+                    {
+                        if (prop.Name == "Selector") continue;
+                        prop.SetValue(targetFormatting, prop.GetValue(sourceFormatting, null), null);
+                    }
+                    updatedCount++;
+                }
+                else
+                {
+                    // Create new ObjectProperties and copy all except Selector
+                    var newFormatting = new VisualDto.ObjectProperties();
+                    var sourceProps = typeof(VisualDto.ObjectProperties).GetProperties();
+                    foreach (var prop in sourceProps)
+                    {
+                        if (prop.Name == "Selector")
+                        {
+                            // Create new Selector and set Metadata to targetHeader
+                            newFormatting.Selector = new VisualDto.Selector { Metadata = targetHeader };
+                        }
+                        else
+                        {
+                            prop.SetValue(newFormatting, prop.GetValue(sourceFormatting, null), null);
+                        }
+                    }
+                    if (selectedVisual.Content.Visual.Objects.ColumnFormatting == null)
+                        selectedVisual.Content.Visual.Objects.ColumnFormatting = new List<VisualDto.ObjectProperties>();
+                    selectedVisual.Content.Visual.Objects.ColumnFormatting.Add(newFormatting);
+                    updatedCount++;
+                }
+            }
+
+            Rx.SaveVisual(selectedVisual);
+            Output(String.Format(@"{0} headers updated with formatting from '{1}'.", updatedCount, sourceHeader));
+        }
+        
+        
+        void testReportClass()
+        {
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+
+            ReportExtended report = Rx.InitReport();
+            if (report == null)
+            {
+                Info("Operation cancelled or failed to load report.");
+                return;
+            }
+
+            VisualExtended visual = Rx.SelectVisual(report);
+            if (visual == null)
+            {
+                Info("No visual selected.");
+                return;
+            }
+
+            Rx.SaveVisual(visual);
+            Output("Visual saved to visual.json.");
+        }
+        void createTextMeasures()
+        {
+            //using GeneralFunctions;
+
+
+            //2025-07-28/B.Agullo
+            //This script creates text measures based on the selected measures in the model.
+            //It prompts the user for a prefix and suffix to be added to the text measures.
+            //It also allows the user to specify a suffix for the names of the new text measures.
+
+            if (Selected.Measures.Count() == 0)
+            {
+                Error("No measures selected. Please select at least one measure.");
+                return;
+            }
+
+            // Ask user for prefix
+            string prefix = Fx.GetNameFromUser(
+                Prompt: "Enter a prefix for the new text measures (use ### for current measure name):",
+                Title: "Text Measure Prefix",
+                DefaultResponse: ""
+            );
+            if (prefix == null) return;
+           
+
+
+            // Ask user for suffix
+            string suffix = Fx.GetNameFromUser(
+                Prompt: "Enter a suffix for the new text measures (use ### for current measure name):",
+                Title: "Text Measure Suffix",
+                DefaultResponse: ""
+            );
+            if (suffix == null) return;
+
+            // Ask user for measure name suffix
+            string measureNameSuffix = Fx.GetNameFromUser(
+                Prompt: "Enter a suffix for the Name of the new text measures:",
+                Title: "Suffix for names!",
+                DefaultResponse: " Text"
+            );
+            if (measureNameSuffix == null) return;
+
+
+
+            foreach (Measure m in Selected.Measures)
+            {
+                string newMeasureName = m.Name + measureNameSuffix;
+                string newMeasureDisplayFolder = (m.DisplayFolder + measureNameSuffix).Trim();
+                string newMeasureExpression = 
+                    String.Format(
+                        @"""{2}"" & FORMAT([{0}], ""{1}"") & ""{3}""", 
+                        m.Name, 
+                        m.FormatString, 
+                        prefix.Replace("###", m.Name), 
+                        suffix.Replace("###",m.Name));
+                Measure newMeasure = m.Table.AddMeasure(newMeasureName, newMeasureExpression,newMeasureDisplayFolder);
+                newMeasure.FormatDax();
+            }
+        }
+        
+        void removeEmptyFolders()
+        {
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+            //using Report.DTO;
+            //using GeneralFunctions;
+
+            // Prompt user to select report
+            var report = Rx.InitReport("Select PBIR file to clean up empty visual folders");
+            if (report == null)
+            {
+                Info("Operation cancelled or failed to load report.");
+                return;
+            }
+
+            int removedCount = 0;
+
+            foreach (var page in report.Pages)
+            {
+                if (page == null || string.IsNullOrEmpty(page.PageFilePath))
+                    continue;
+
+                string pageFolder = Path.GetDirectoryName(page.PageFilePath);
+                if (string.IsNullOrEmpty(pageFolder))
+                    continue;
+
+                string visualsFolder = Path.Combine(pageFolder, "visuals");
+                if (!Directory.Exists(visualsFolder))
+                    continue;
+
+                var visualSubfolders = Directory.GetDirectories(visualsFolder);
+                foreach (var visualFolder in visualSubfolders)
+                {
+                    string visualJsonPath = Path.Combine(visualFolder, "visual.json");
+                    if (!File.Exists(visualJsonPath))
+                    {
+                        try
+                        {
+                            Directory.Delete(visualFolder, true);
+                            removedCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            Output(String.Format("Failed to remove folder '{0}': {1}", visualFolder, ex.Message));
+                        }
+                    }
+                }
+            }
+
+            Info(String.Format("Removed {0} empty visual folders.", removedCount));
+        }
+
+        void AddBilingualLayerToReport()
+        {
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+            //2025-06-23/B.Agullo
+            //this script adds a bilingual layer to the report, allowing the user to select the language of the report.
+            //this will only prepare the report for an extraction of the definition as descrived in https://www.esbrina-ba.com/transforming-a-regular-report-into-a-bilingual-one-part-2-extracting-display-names-of-measures-and-field-prameters/
+            
+
+            ReportExtended report = Rx.InitReport();
+            if (report == null) return;
+
+
+            string altTextFlag = Fx.GetNameFromUser(
+                Prompt: "Enter the flag for the original language (e.g., 'EN' for English):",
+                Title: "Alternative Language Flag",
+                DefaultResponse: "EN"
+            );
+
+            if (string.IsNullOrEmpty(altTextFlag))
+            {
+                Info("Operation cancelled.");
+                return;
+            }
+
+            int totalCount = 0;
+
+            // For each page, process visuals
+            foreach (var pageExt in report.Pages)
+            {
+                var visuals = (pageExt.Visuals ?? new List<VisualExtended>())
+                    .OrderBy(v => v.Content.Position.Y)
+                    .ThenBy(v => v.Content.Position.X)
+                    .ToList();
+
+                int bilingualCounter = 1;
+
+                foreach (var visual in visuals)
+                {
+                    // Skip if already in a bilingual group or if it's a group itself
+                    if (visual.IsInBilingualVisualGroup()) continue;
+                    if (visual.isVisualGroup) continue;
+
+                    // Duplicate the visual (deep copy)
+                    VisualExtended duplicate = Rx.DuplicateVisual(visual);
+
+                    // Add the duplicate to the page
+                    pageExt.Visuals.Add(duplicate);
+
+                    // Prepare bilingual group name, ensure uniqueness
+                    string pagePrefix = String.Format("P{0:00}", visual.ParentPage.PageIndex + 1);
+
+                    string groupSuffix = String.Format("{0:000}", bilingualCounter);
+
+                    string bilingualGroupDisplayName = pagePrefix + "-" + groupSuffix;
+
+                    // Check for existing group with the same display name and increment counter if needed
+                    while (pageExt.Visuals.Any(v =>
+                        v.isVisualGroup &&
+                        v.Content.VisualGroup != null &&
+                        v.Content.VisualGroup.DisplayName == bilingualGroupDisplayName))
+                    {
+                        bilingualCounter++;
+                        groupSuffix = String.Format("{0:000}", bilingualCounter);
+                        bilingualGroupDisplayName = pagePrefix + "-" + groupSuffix;
+                    }
+
+                    string originalVisualGroupName = visual.Content.ParentGroupName;
+
+                    List<VisualExtended> visualsToGroup = new List<VisualExtended> { visual, duplicate };
+
+                    // Create bilingual visual group
+                    VisualExtended visualGroup = Rx.GroupVisuals(visualsToGroup, groupDisplayName: bilingualGroupDisplayName);
+
+                    //configure the original visual group if existed
+                    if (originalVisualGroupName != null)
+                    {
+                        visualGroup.Content.ParentGroupName = originalVisualGroupName;
+                    }
+
+                    //set the altText flag 
+                    string currentAltText = visual.AltText ?? "";
+                    if (!currentAltText.StartsWith(altTextFlag))
+                    {
+                        visual.AltText = String.Format(@"{0} {1}", altTextFlag, currentAltText).Trim();
+                    }
+
+                    // Remove flag from duplicate's altText if present
+                    string duplicateAltText = duplicate.AltText ?? "";
+                    if (duplicateAltText.StartsWith(altTextFlag))
+                    {
+                        duplicate.AltText = duplicateAltText.Substring(altTextFlag.Length).TrimStart();
+                    }
+
+                    //hide the original visual
+                    visual.Content.IsHidden = true;
+
+                    Rx.SaveVisual(visual);
+                    Rx.SaveVisual(duplicate);
+                    Rx.SaveVisual(visualGroup);
+
+                    bilingualCounter++;
+                    totalCount++;
+                }
+            }
+
+            Output(String.Format("Bilingual visual groups created for {0} visuals.",totalCount));
+        }
+
+
+        void CopyVisual()
+        {
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+
+            // 2025-07-05/B.Agullo
+            // This script will copy a visual from a template report to the target report. 
+            // Target report must be connected with the model that this instance of tabular editor is connected to. 
+            // Both target report and template report must use PBIR format
+            // If you are executing this in Tabular Editor 2 you need to 
+            // configure Roslyn compiler as explained here:
+            // https://docs.tabulareditor.com/te2/Advanced-Scripting.html#compiling-with-roslyn
+
+            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
+            bool waitCursor = Application.UseWaitCursor;
+            Application.UseWaitCursor = false;
+
+
+
+            // Step 1: Initialize source and target reports
+            ReportExtended sourceReport = Rx.InitReport(label: @"Select the SOURCE report");
+            if (sourceReport == null) return;
+
+            ReportExtended targetReport = Rx.InitReport(label: @"Select the TARGET report");
+            if (targetReport == null) return;
+
+            IList<VisualExtended> sourceVisuals = Rx.SelectVisuals(sourceReport);
+
+            // If no visuals were selected, exit
+            if (sourceVisuals == null || sourceVisuals.Count == 0) return;
+
+            // Step 5: Ask in which page of the target report the new visual should be created
+            var targetPages = targetReport.Pages.ToList();
+            var pageDisplayList = targetPages.Select(p => p.Page.DisplayName).ToList();
+            string newPageOption = @"<Create new page>";
+            pageDisplayList.Add(newPageOption);
+            string selectedPageDisplay = Fx.ChooseString(OptionList: pageDisplayList, label: @"Select target page for the new visual");
+            if (String.IsNullOrEmpty(selectedPageDisplay))
+            {
+                Info(@"No target page selected.");
+                return;
+            }
+
+            object targetPage = null;
+            // Step 5.1: If the user selected the option to create a new page, replicate the first page as blank
+            if (selectedPageDisplay == newPageOption)
+            {
+                targetPage = Rx.ReplicateFirstPageAsBlank(targetReport);
+            }
+            else
+            {
+                targetPage = targetPages.First(p => p.Page.DisplayName == selectedPageDisplay);
+            }
+
+
+
+            // Create a mapping from original visual names to new GUID-based names
+            var visualNameMap = new Dictionary<string, string>();
+            foreach (var vis in sourceVisuals)
+            {
+                string newGuidName = Guid.NewGuid().ToString().Replace("-", "").Substring(0, 20);
+                visualNameMap[vis.Content.Name] = newGuidName;
+            }
+
+            // Prepare replacement maps. Once a reference is replaced, it will be stored in these maps to avoid re-selection.
+            var measureReplacementMap = new Dictionary<string, Measure>();
+            var columnReplacementMap = new Dictionary<string, Column>();
+
+
+            // Replacement maps for filterConfig patch
+            var tableReplacementMap = new Dictionary<string, string>();
+            var fieldReplacementMap = new Dictionary<string, string>();
+
+            int visualsCount = 0; 
+
+            // Step 2: Let user select a single visual from the source report
+            foreach (VisualExtended sourceVisual in sourceVisuals)
+            {
+                if (sourceVisual == null) return;
+
+                // Step 3: For each measure and column used, find equivalent in connected model and replace
+                var referencedMeasures = sourceVisual.GetAllReferencedMeasures().ToList();
+                var referencedColumns = sourceVisual.GetAllReferencedColumns().ToList();
+                               
+
+                foreach (string measureRef in referencedMeasures)
+                {
+                    // If measureRef is already in the dictionary, use the existing replacement
+                    Measure replacement;
+                    
+                    if (measureReplacementMap.ContainsKey(measureRef))
+                    {
+                        replacement = measureReplacementMap[measureRef];
+                    }
+                    else
+                    {
+                        Measure preselect = Model.AllMeasures.FirstOrDefault(m =>
+                            String.Format(@"{0}[{1}]", m.Table.DaxObjectFullName, m.Name) == measureRef
+                        );
+                        replacement = SelectMeasure(preselect: preselect, label: String.Format(@"Select replacement for measure {0}", measureRef));
+                        if (replacement == null)
+                        {
+                            Error(String.Format(@"No replacement selected for measure {0}.", measureRef));
+                            return;
+                        }
+                        measureReplacementMap[measureRef] = replacement;
+
+                        string oldTable = measureRef.Split('[')[0].Trim('\'');
+                        string oldField = measureRef.Split('[', ']')[1];
+
+                        tableReplacementMap[oldTable] = replacement.Table.Name;
+                        fieldReplacementMap[oldField] = replacement.Name;
+                    }
+                    
+                }
+
+                foreach (string columnRef in referencedColumns)
+                {
+                    Column replacement;
+                    if (columnReplacementMap.ContainsKey(columnRef))
+                    {
+                        replacement = columnReplacementMap[columnRef];
+                    }
+                    else
+                    {
+
+
+                        Column preselect = Model.AllColumns.FirstOrDefault(c =>
+                        c.DaxObjectFullName == columnRef
+                        );
+                        replacement = SelectColumn(Model.AllColumns, preselect: preselect, label: String.Format(@"Select replacement for column {0}", columnRef));
+                        if (replacement == null)
+                        {
+                            Error(String.Format(@"No replacement selected for column {0}.", columnRef));
+                            return;
+                        }
+                        columnReplacementMap[columnRef] = replacement;
+
+                        string oldTable = columnRef.Split('[')[0].Trim('\'');
+                        string oldField = columnRef.Split('[', ']')[1];
+
+                        tableReplacementMap[oldTable] = replacement.Table.Name;
+                        fieldReplacementMap[oldField] = replacement.Name;
+
+                    }
+                }
+
+                // Step 4: Replace fields in the visual object
+                foreach (var kv in measureReplacementMap)
+                {
+                    sourceVisual.ReplaceMeasure(kv.Key, kv.Value);
+                }
+                foreach (var kv in columnReplacementMap)
+                {
+                    sourceVisual.ReplaceColumn(kv.Key, kv.Value);
+                }
+
+                
+
+                // Step 5.2: Assign a new GUID as the visual name to avoid conflicts
+                string newVisualName = visualNameMap[sourceVisual.Content.Name];
+                sourceVisual.Content.Name = newVisualName;
+
+                if (sourceVisual.Content.ParentGroupName != null)
+                {
+                    string newParentGroupName = visualNameMap.ContainsKey(sourceVisual.Content.ParentGroupName)
+                        ? visualNameMap[sourceVisual.Content.ParentGroupName]
+                        : null;
+
+                    sourceVisual.Content.ParentGroupName = newParentGroupName;
+                }
+
+                // Step 6: Build new visual file path
+                string targetPageFolder = Path.GetDirectoryName(((PageExtended)targetPage).PageFilePath);
+                string visualsFolder = Path.Combine(targetPageFolder, "visuals");
+                string newVisualJsonPath = Path.Combine(visualsFolder, sourceVisual.Content.Name, "visual.json");
+
+                // Update visual's file path and parent page
+                sourceVisual.VisualFilePath = newVisualJsonPath;
+
+            }
+
+            foreach (VisualExtended sourceVisual in sourceVisuals)
+            {
+                //now that the tableReplacementMap and fieldReplacementMap are ready, we can replace the filterConfig
+                sourceVisual.ReplaceInFilterConfigRaw(tableReplacementMap, fieldReplacementMap);
+
+                // Step 7: Save the visual generating the visual.json file in the target report
+                Rx.SaveVisual(sourceVisual);
+                visualsCount++;
+            }
+
+
+
+            Output(String.Format(@"{0} Visuals copied to page '{1}' in target report.", visualsCount, ((PageExtended)targetPage).Page.DisplayName));
+
+            //comment this line in TE2
+            Application.UseWaitCursor = waitCursor;
+
+        }
+
         void openVisualJsonFile()
         {
             //using GeneralFunctions;
@@ -60,11 +618,17 @@ namespace TE_Scripting
 
             // Step 3: Prepare display names for selection
             var visualDisplayList = allVisuals.Select(x =>
-                String.Format(@"{0} - {1} ({2}, {3})", x.Page.DisplayName, x.Visual.Content.Visual.VisualType, (int)x.Visual.Content.Position.X, (int)x.Visual.Content.Position.Y)
+                String.Format(
+                    @"{0} - {1} ({2}, {3})", 
+                    x.Page.DisplayName, 
+                    x.Visual?.Content?.Visual?.VisualType 
+                        ?? x.Visual?.Content?.VisualGroup?.DisplayName, 
+                    (int)x.Visual.Content.Position.X, 
+                    (int)x.Visual.Content.Position.Y)
             ).ToList();
 
             // Step 4: Let the user select one or more visuals
-            List<string> selected = Fx.ChooseStringMultiple(OptionList: visualDisplayList, Label: "Select visuals to open JSON files");
+            List<string> selected = Fx.ChooseStringMultiple(OptionList: visualDisplayList, label: "Select visuals to open JSON files");
             if (selected == null || selected.Count == 0)
             {
                 Info("No visuals selected.");
@@ -74,7 +638,14 @@ namespace TE_Scripting
             // Step 5: For each selected visual, open its JSON file
             foreach (var visualEntry in allVisuals)
             {
-                string display = String.Format(@"{0} - {1} ({2}, {3})", visualEntry.Page.DisplayName, visualEntry.Visual.Content.Visual.VisualType, (int)visualEntry.Visual.Content.Position.X, (int)visualEntry.Visual.Content.Position.Y);
+                string display = String.Format
+                    (@"{0} - {1} ({2}, {3})", 
+                    visualEntry.Page.DisplayName, 
+                    visualEntry?.Visual?.Content?.Visual?.VisualType 
+                        ?? visualEntry.Visual?.Content?.VisualGroup?.DisplayName, 
+                    (int)visualEntry.Visual.Content.Position.X, 
+                    (int)visualEntry.Visual.Content.Position.Y);
+
                 if (selected.Contains(display))
                 {
                     string jsonPath = visualEntry.Visual.VisualFilePath;
@@ -471,7 +1042,7 @@ namespace TE_Scripting
         {
 
             // NOCOPY replace <PROJECT FOLDER> (both instances) with the path to the folder where the .sln file is stored.
-            //#r "<PROJECT FOLDER>\TE Scripts\bin\Debug\TE Scripts.dll"
+            //#r "<PROJECT FOLDER>\TE Scripts\bin\Debug\net48\TE Scripts.dll"
             //using TE_Scripting;
 
             string baseFolderPath = @"<PROJECT FOLDER>";

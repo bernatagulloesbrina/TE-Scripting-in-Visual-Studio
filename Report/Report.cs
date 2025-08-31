@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using TabularEditor.TOMWrapper;
 using TabularEditor.Scripting;
 using Newtonsoft.Json.Linq;
+using static Report.DTO.VisualDto;
 
 namespace Report.DTO
 {
@@ -20,6 +21,7 @@ namespace Report.DTO
 
         [Newtonsoft.Json.JsonProperty("activePageName")]
         public string ActivePageName { get; set; }
+        
     }
 
     public class PageDto
@@ -52,10 +54,76 @@ namespace Report.DTO
             [JsonProperty("name")] public string Name { get; set; }
             [JsonProperty("position")] public Position Position { get; set; }
             [JsonProperty("visual")] public Visual Visual { get; set; }
-            [JsonProperty("visualContainerObjects")] public object VisualContainerObjects { get; set; }
-            [JsonProperty("filterConfig")] public object FilterConfig { get; set; }
+            
+
+            [JsonProperty("visualGroup")] public VisualGroup VisualGroup { get; set; }
+            [JsonProperty("parentGroupName")] public string ParentGroupName { get; set; }
+            [JsonProperty("filterConfig")] public FilterConfig FilterConfig { get; set; }
+            [JsonProperty("isHidden")] public bool IsHidden { get; set; }
+
+            [JsonExtensionData]
+            
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+
+        public class VisualContainerObjects
+        {
+            [JsonProperty("general")]
+            public List<VisualContainerObject> General { get; set; }
+
+            // Add other known properties as needed, e.g.:
+            [JsonProperty("title")]
+            public List<VisualContainerObject> Title { get; set; }
+
+            [JsonProperty("subTitle")]
+            public List<VisualContainerObject> SubTitle { get; set; }
+
+            // This will capture any additional properties not explicitly defined above
             [JsonExtensionData]
             public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class VisualContainerObject
+        {
+            [JsonProperty("properties")]
+            public Dictionary<string, VisualContainerProperty> Properties { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class VisualContainerProperty
+        {
+            [JsonProperty("expr")]
+            public VisualExpr Expr { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class VisualExpr
+        {
+            [JsonProperty("Literal")]
+            public VisualLiteral Literal { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class VisualLiteral
+        {
+            [JsonProperty("Value")]
+            public string Value { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class VisualGroup
+        {
+            [JsonProperty("displayName")] public string DisplayName { get; set; }
+            [JsonProperty("groupMode")] public string GroupMode { get; set; }
         }
 
         public class Position
@@ -65,17 +133,22 @@ namespace Report.DTO
             [JsonProperty("z")] public int Z { get; set; }
             [JsonProperty("height")] public double Height { get; set; }
             [JsonProperty("width")] public double Width { get; set; }
-            [JsonProperty("tabOrder")] public int TabOrder { get; set; }
+
+            [JsonProperty("tabOrder", NullValueHandling = NullValueHandling.Ignore)]
+            public int? TabOrder { get; set; }
+
             [JsonExtensionData]
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
         public class Visual
         {
-            [JsonProperty("visualType", Order = 1)] public string VisualType { get; set; }
-            [JsonProperty("query", Order = 2)] public Query Query { get; set; }
-            [JsonProperty("objects", Order = 3)] public Objects Objects { get; set; }
-            [JsonProperty("drillFilterOtherVisuals", Order = 4)] public bool DrillFilterOtherVisuals { get; set; }
+            [JsonProperty("visualType")] public string VisualType { get; set; }
+            [JsonProperty("query")] public Query Query { get; set; }
+            [JsonProperty("objects")] public Objects Objects { get; set; }
+            [JsonProperty("visualContainerObjects")]
+            public VisualContainerObjects VisualContainerObjects { get; set; }
+            [JsonProperty("drillFilterOtherVisuals")] public bool DrillFilterOtherVisuals { get; set; }
             [JsonExtensionData]
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
@@ -88,7 +161,7 @@ namespace Report.DTO
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
-        public class QueryState
+        public class  QueryState
         {
             [JsonProperty("Rows", Order = 1)] public VisualDto.ProjectionsSet Rows { get; set; }
             [JsonProperty("Category", Order = 2)] public VisualDto.ProjectionsSet Category { get; set; }
@@ -107,6 +180,22 @@ namespace Report.DTO
         public class ProjectionsSet
         {
             [JsonProperty("projections")] public List<VisualDto.Projection> Projections { get; set; }
+            [JsonProperty("fieldParameters")] public List<VisualDto.FieldParameter> FieldParameters { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class FieldParameter
+        {
+            [JsonProperty("parameterExpr")]
+            public Field ParameterExpr { get; set; }
+
+            [JsonProperty("index")]
+            public int Index { get; set; }
+
+            [JsonProperty("length")]
+            public int Length { get; set; }
+
             [JsonExtensionData]
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
@@ -217,13 +306,16 @@ namespace Report.DTO
             [JsonProperty("legend")] public List<VisualDto.ObjectProperties> Legend { get; set; }
             [JsonProperty("labels")] public List<VisualDto.ObjectProperties> Labels { get; set; }
             [JsonProperty("dataPoint")] public List<VisualDto.ObjectProperties> DataPoint { get; set; }
-
+            [JsonProperty("columnFormatting")]
+            public List<VisualDto.ObjectProperties> ColumnFormatting { get; set; }
 
             [JsonProperty("referenceLabel")] public List<VisualDto.ObjectProperties> ReferenceLabel { get; set; }
             [JsonProperty("referenceLabelDetail")] public List<VisualDto.ObjectProperties> ReferenceLabelDetail { get; set; }
             [JsonProperty("referenceLabelValue")] public List<VisualDto.ObjectProperties> ReferenceLabelValue { get; set; }
 
             [JsonProperty("values")] public List<VisualDto.ObjectProperties> Values { get; set; }
+
+            [JsonProperty("y1AxisReferenceLine")] public List<VisualDto.ObjectProperties> Y1AxisReferenceLine { get; set; }
 
 
             [JsonExtensionData] public Dictionary<string, JToken> ExtensionData { get; set; }
@@ -309,6 +401,12 @@ namespace Report.DTO
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
+        public class ThemeDataColor
+        {
+            [JsonProperty("ColorId")] public int ColorId { get; set; }
+            [JsonProperty("Percent")] public double Percent { get; set; }
+            [JsonExtensionData] public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
         public class VisualColorExprWrapper
         {
             [JsonProperty("Measure")]
@@ -325,6 +423,11 @@ namespace Report.DTO
 
             [JsonProperty("FillRule")]
             public FillRuleExpression FillRule { get; set; }
+
+            public VisualLiteral Literal { get; set; }
+
+            [JsonProperty("ThemeDataColor")] 
+            public ThemeDataColor ThemeDataColor { get; set; }
             [JsonExtensionData]
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
@@ -354,6 +457,188 @@ namespace Report.DTO
             [JsonExtensionData]
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
+
+
+        public class FilterConfig
+        {
+            [JsonProperty("filters")]
+            public List<VisualFilter> Filters { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class VisualFilter
+        {
+            [JsonProperty("name")] public string Name { get; set; }
+            [JsonProperty("field")] public VisualDto.Field Field { get; set; }
+            [JsonProperty("type")] public string Type { get; set; }
+            [JsonProperty("filter")] public FilterDefinition Filter { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class FilterDefinition
+        {
+            [JsonProperty("Version")] public int Version { get; set; }
+            [JsonProperty("From")] public List<FilterFrom> From { get; set; }
+            [JsonProperty("Where")] public List<FilterWhere> Where { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class FilterFrom
+        {
+            [JsonProperty("Name")] public string Name { get; set; }
+            [JsonProperty("Entity")] public string Entity { get; set; }
+            [JsonProperty("Type")] public int Type { get; set; }
+            [JsonProperty("Expression")] public FilterExpression Expression { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class FilterExpression
+        {
+            [JsonProperty("Subquery")] public SubqueryExpression Subquery { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class SubqueryExpression
+        {
+            [JsonProperty("Query")] public SubqueryQuery Query { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class SubqueryQuery
+        {
+            [JsonProperty("Version")] public int Version { get; set; }
+            [JsonProperty("From")] public List<FilterFrom> From { get; set; }
+            [JsonProperty("Select")] public List<SelectExpression> Select { get; set; }
+            [JsonProperty("OrderBy")] public List<OrderByExpression> OrderBy { get; set; }
+            [JsonProperty("Top")] public int? Top { get; set; }
+
+            [JsonProperty("Where")] public List<FilterWhere> Where { get; set; } // 🔹 Added
+
+            [JsonExtensionData] public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+
+        public class SelectExpression
+        {
+            [JsonProperty("Column")] public ColumnSelect Column { get; set; }
+            [JsonProperty("Name")] public string Name { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class ColumnSelect
+        {
+            [JsonProperty("Expression")]
+            public VisualDto.Expression Expression { get; set; }  // NOTE: wrapper that contains "SourceRef"
+
+            [JsonProperty("Property")]
+            public string Property { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class OrderByExpression
+        {
+            [JsonProperty("Direction")] public int Direction { get; set; }
+            [JsonProperty("Expression")] public OrderByInnerExpression Expression { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class OrderByInnerExpression
+        {
+            [JsonProperty("Measure")] public VisualDto.MeasureObject Measure { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class FilterWhere
+        {
+            [JsonProperty("Condition")] public Condition Condition { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class Condition
+        {
+            [JsonProperty("In")] public InExpression In { get; set; }
+            [JsonProperty("Not")] public NotExpression Not { get; set; }
+            [JsonProperty("Comparison")] public ComparisonExpression Comparison { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class InExpression
+        {
+            [JsonProperty("Expressions")] public List<ColumnSelect> Expressions { get; set; }
+            [JsonProperty("Table")] public InTable Table { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class InTable
+        {
+            [JsonProperty("SourceRef")] public VisualDto.SourceRef SourceRef { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class NotExpression
+        {
+            [JsonProperty("Expression")] public Condition Expression { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class ComparisonExpression
+        {
+            [JsonProperty("ComparisonKind")] public int ComparisonKind { get; set; }
+            [JsonProperty("Left")] public FilterOperand Left { get; set; }
+            [JsonProperty("Right")] public FilterOperand Right { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class FilterOperand
+        {
+            [JsonProperty("Measure")] public VisualDto.MeasureObject Measure { get; set; }
+            [JsonProperty("Column")] public VisualDto.ColumnField Column { get; set; }
+            [JsonProperty("Literal")] public LiteralOperand Literal { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class LiteralOperand
+        {
+            [JsonProperty("Value")] public string Value { get; set; }
+
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
 
         public class PropertiesConverter : JsonConverter
         {
@@ -409,6 +694,71 @@ namespace Report.DTO
 
         public string VisualFilePath { get; set; }
 
+        public bool isVisualGroup => Content?.VisualGroup != null;
+        public bool isGroupedVisual => Content?.ParentGroupName != null;
+
+        public bool IsBilingualVisualGroup()
+        {
+            if (!isVisualGroup || string.IsNullOrEmpty(Content.VisualGroup.DisplayName))
+                return false;
+            return System.Text.RegularExpressions.Regex.IsMatch(Content.VisualGroup.DisplayName, @"^P\d{2}-\d{3}$");
+        }
+
+        public PageExtended ParentPage { get; set; }
+
+        public bool IsInBilingualVisualGroup()
+        {
+            if (ParentPage == null || ParentPage.Visuals == null || Content.ParentGroupName == null)
+                return false;
+            return ParentPage.Visuals.Any(v => v.IsBilingualVisualGroup() && v.Content.Name == Content.ParentGroupName);
+        }
+
+        [JsonIgnore]
+        public string AltText
+        {
+            get
+            {
+                var general = Content?.Visual?.VisualContainerObjects?.General;
+                if (general == null || general.Count == 0)
+                    return null;
+                if (!general[0].Properties.ContainsKey("altText"))
+                    return null;
+                return general[0].Properties["altText"]?.Expr?.Literal?.Value?.Trim('\'');
+            }
+            set
+            {
+                if (Content?.Visual == null)
+                    Content.Visual = new VisualDto.Visual();
+
+                if (Content?.Visual?.VisualContainerObjects == null)
+                    Content.Visual.VisualContainerObjects = new VisualDto.VisualContainerObjects();
+
+                if (Content.Visual?.VisualContainerObjects.General == null || Content.Visual?.VisualContainerObjects.General.Count == 0)
+                    Content.Visual.VisualContainerObjects.General =
+                        new List<VisualDto.VisualContainerObject> {
+                        new VisualDto.VisualContainerObject {
+                            Properties = new Dictionary<string, VisualDto.VisualContainerProperty>()
+                        }
+                        };
+
+                var general = Content.Visual.VisualContainerObjects.General[0];
+
+                if (general.Properties == null)
+                    general.Properties = new Dictionary<string, VisualDto.VisualContainerProperty>();
+
+                general.Properties["altText"] = new VisualDto.VisualContainerProperty
+                {
+                    Expr = new VisualDto.VisualExpr
+                    {
+                        Literal = new VisualDto.VisualLiteral
+                        {
+                            Value = value == null ? null : "'" + value.Replace("'", "\\'") + "'"
+                        }
+                    }
+                };
+            }
+        }
+
         private IEnumerable<VisualDto.Field> GetAllFields()
         {
             var fields = new List<VisualDto.Field>();
@@ -439,13 +789,13 @@ namespace Report.DTO
                 fields.AddRange(GetFieldsFromObjectList(objects.Legend));
                 fields.AddRange(GetFieldsFromObjectList(objects.General));
                 fields.AddRange(GetFieldsFromObjectList(objects.ValueAxis));
+                fields.AddRange(GetFieldsFromObjectList(objects.Y1AxisReferenceLine));
                 fields.AddRange(GetFieldsFromObjectList(objects.ReferenceLabel));
                 fields.AddRange(GetFieldsFromObjectList(objects.ReferenceLabelDetail));
                 fields.AddRange(GetFieldsFromObjectList(objects.ReferenceLabelValue));
-
             }
 
-            fields.AddRange(GetFieldsFromFilterConfig(Content?.FilterConfig));
+            fields.AddRange(GetFieldsFromFilterConfig(Content?.FilterConfig as VisualDto.FilterConfig));
 
             return fields.Where(f => f != null);
         }
@@ -477,87 +827,202 @@ namespace Report.DTO
                             yield return new VisualDto.Field { Column = prop.Expr.Column };
                     }
 
-                    if (prop.Color != null &&
-                        prop.Color.Expr != null &&
-                        prop.Color.Expr.FillRule != null &&
-                        prop.Color.Expr.FillRule.Input != null)
-                    {
+                    if (prop.Color?.Expr?.FillRule?.Input != null)
                         yield return prop.Color.Expr.FillRule.Input;
-                    }
 
-                    if (prop.Solid != null &&
-                        prop.Solid.Color != null &&
-                        prop.Solid.Color.Expr != null &&
-                        prop.Solid.Color.Expr.FillRule != null &&
-                        prop.Solid.Color.Expr.FillRule.Input != null)
-                    {
+                    if (prop.Solid?.Color?.Expr?.FillRule?.Input != null)
                         yield return prop.Solid.Color.Expr.FillRule.Input;
-                    }
 
-                    var solidExpr = prop.Solid != null &&
-                                    prop.Solid.Color != null
-                                    ? prop.Solid.Color.Expr
-                                    : null;
-
-                    if (solidExpr != null)
-                    {
-                        if (solidExpr.Measure != null)
-                            yield return new VisualDto.Field { Measure = solidExpr.Measure };
-
-                        if (solidExpr.Column != null)
-                            yield return new VisualDto.Field { Column = solidExpr.Column };
-                    }
+                    var solidExpr = prop.Solid?.Color?.Expr;
+                    if (solidExpr?.Measure != null)
+                        yield return new VisualDto.Field { Measure = solidExpr.Measure };
+                    if (solidExpr?.Column != null)
+                        yield return new VisualDto.Field { Column = solidExpr.Column };
                 }
             }
         }
 
-        private IEnumerable<VisualDto.Field> GetFieldsFromFilterConfig(object filterConfig)
+        private IEnumerable<VisualDto.Field> GetFieldsFromFilterConfig(VisualDto.FilterConfig filterConfig)
         {
             var fields = new List<VisualDto.Field>();
 
-            if (filterConfig is JObject jObj)
+            if (filterConfig?.Filters == null)
+                return fields;
+
+            foreach (var filter in filterConfig.Filters ?? Enumerable.Empty<VisualDto.VisualFilter>())
             {
-                foreach (var token in jObj.DescendantsAndSelf().OfType<JObject>())
+                if (filter.Field != null)
+                    fields.Add(filter.Field);
+
+                if (filter.Filter != null)
                 {
-                    var table = token["table"]?.ToString();
-                    var property = token["column"]?.ToString() ?? token["measure"]?.ToString();
+                    var aliasMap = BuildAliasMap(filter.Filter.From);
 
-                    if (!string.IsNullOrEmpty(table) && !string.IsNullOrEmpty(property))
+                    foreach (var from in filter.Filter.From ?? Enumerable.Empty<VisualDto.FilterFrom>())
                     {
-                        var field = new VisualDto.Field();
-
-                        if (token["measure"] != null)
-                        {
-                            field.Measure = new VisualDto.MeasureObject
-                            {
-                                Property = property,
-                                Expression = new VisualDto.Expression
-                                {
-                                    SourceRef = new VisualDto.SourceRef { Entity = table }
-                                }
-                            };
-                        }
-                        else if (token["column"] != null)
-                        {
-                            field.Column = new VisualDto.ColumnField
-                            {
-                                Property = property,
-                                Expression = new VisualDto.Expression
-                                {
-                                    SourceRef = new VisualDto.SourceRef { Entity = table }
-                                }
-                            };
-                        }
-
-                        fields.Add(field);
+                        if (from.Expression?.Subquery?.Query != null)
+                            ExtractFieldsFromSubquery(from.Expression.Subquery.Query, fields);
                     }
+
+                    foreach (var where in filter.Filter.Where ?? Enumerable.Empty<VisualDto.FilterWhere>())
+                        ExtractFieldsFromCondition(where.Condition, fields, aliasMap);
                 }
             }
 
             return fields;
         }
 
+        private void ExtractFieldsFromSubquery(VisualDto.SubqueryQuery query, List<VisualDto.Field> fields)
+        {
+            var aliasMap = BuildAliasMap(query.From);
 
+            // SELECT columns
+            foreach (var sel in query.Select ?? Enumerable.Empty<VisualDto.SelectExpression>())
+            {
+                var srcRef = sel.Column?.Expression?.SourceRef ?? new VisualDto.SourceRef();
+                srcRef.Source = ResolveSource(srcRef.Source, aliasMap);
+
+                var columnExpr = sel.Column ?? new VisualDto.ColumnSelect();
+                columnExpr.Expression ??= new VisualDto.Expression();
+                columnExpr.Expression.SourceRef ??= new VisualDto.SourceRef();
+                columnExpr.Expression.SourceRef.Source = srcRef.Source;
+
+                fields.Add(new VisualDto.Field
+                {
+                    Column = new VisualDto.ColumnField
+                    {
+                        Property = sel.Column.Property,
+                        Expression = new VisualDto.Expression
+                        {
+                            SourceRef = columnExpr.Expression.SourceRef
+                        }
+                    }
+                });
+            }
+
+            // ORDER BY measures
+            foreach (var ob in query.OrderBy ?? Enumerable.Empty<VisualDto.OrderByExpression>())
+            {
+                var measureExpr = ob.Expression?.Measure?.Expression ?? new VisualDto.Expression();
+                measureExpr.SourceRef ??= new VisualDto.SourceRef();
+                measureExpr.SourceRef.Source = ResolveSource(measureExpr.SourceRef.Source, aliasMap);
+
+                fields.Add(new VisualDto.Field
+                {
+                    Measure = new VisualDto.MeasureObject
+                    {
+                        Property = ob.Expression.Measure.Property,
+                        Expression = measureExpr
+                    }
+                });
+            }
+
+            // Nested subqueries
+            foreach (var from in query.From ?? Enumerable.Empty<VisualDto.FilterFrom>())
+                if (from.Expression?.Subquery?.Query != null)
+                    ExtractFieldsFromSubquery(from.Expression.Subquery.Query, fields);
+
+            // WHERE conditions
+            foreach (var where in query.Where ?? Enumerable.Empty<VisualDto.FilterWhere>())
+                ExtractFieldsFromCondition(where.Condition, fields, aliasMap);
+        }
+        private Dictionary<string, string> BuildAliasMap(List<VisualDto.FilterFrom> fromList)
+        {
+            var map = new Dictionary<string, string>();
+            foreach (var from in fromList ?? Enumerable.Empty<VisualDto.FilterFrom>())
+            {
+                if (!string.IsNullOrEmpty(from.Name) && !string.IsNullOrEmpty(from.Entity))
+                    map[from.Name] = from.Entity;
+            }
+            return map;
+        }
+
+        private string ResolveSource(string source, Dictionary<string, string> aliasMap)
+        {
+            if (string.IsNullOrEmpty(source))
+                return source;
+            return aliasMap.TryGetValue(source, out var entity) ? entity : source;
+        }
+
+        private void ExtractFieldsFromCondition(VisualDto.Condition condition, List<VisualDto.Field> fields, Dictionary<string, string> aliasMap)
+        {
+            if (condition == null) return;
+
+            // IN Expression
+            if (condition.In != null)
+            {
+                foreach (var expr in condition.In.Expressions ?? Enumerable.Empty<VisualDto.ColumnSelect>())
+                {
+                    var srcRef = expr.Expression?.SourceRef ?? new VisualDto.SourceRef();
+                    srcRef.Source = ResolveSource(srcRef.Source, aliasMap);
+
+                    fields.Add(new VisualDto.Field
+                    {
+                        Column = new VisualDto.ColumnField
+                        {
+                            Property = expr.Property,
+                            Expression = new VisualDto.Expression
+                            {
+                                SourceRef = srcRef
+                            }
+                        }
+                    });
+                }
+            }
+
+            // NOT Expression
+            if (condition.Not != null)
+                ExtractFieldsFromCondition(condition.Not.Expression, fields, aliasMap);
+
+            // COMPARISON Expression
+            if (condition.Comparison != null)
+            {
+                AddOperandField(condition.Comparison.Left, fields, aliasMap);
+                AddOperandField(condition.Comparison.Right, fields, aliasMap);
+            }
+        }
+        private void AddOperandField(VisualDto.FilterOperand operand, List<VisualDto.Field> fields, Dictionary<string, string> aliasMap)
+        {
+            if (operand == null) return;
+
+            // MEASURE
+            if (operand.Measure != null)
+            {
+                var srcRef = operand.Measure.Expression?.SourceRef ?? new VisualDto.SourceRef();
+                srcRef.Source = ResolveSource(srcRef.Source, aliasMap);
+
+                fields.Add(new VisualDto.Field
+                {
+                    Measure = new VisualDto.MeasureObject
+                    {
+                        Property = operand.Measure.Property,
+                        Expression = new VisualDto.Expression
+                        {
+                            SourceRef = srcRef
+                        }
+                    }
+                });
+            }
+
+            // COLUMN
+            if (operand.Column != null)
+            {
+                var srcRef = operand.Column.Expression?.SourceRef ?? new VisualDto.SourceRef();
+                srcRef.Source = ResolveSource(srcRef.Source, aliasMap);
+
+                fields.Add(new VisualDto.Field
+                {
+                    Column = new VisualDto.ColumnField
+                    {
+                        Property = operand.Column.Property,
+                        Expression = new VisualDto.Expression
+                        {
+                            SourceRef = srcRef
+                        }
+                    }
+                });
+            }
+        }
         public IEnumerable<string> GetAllReferencedMeasures()
         {
             return GetAllFields()
@@ -629,15 +1094,35 @@ namespace Report.DTO
             {
                 if (f == null) return;
 
-                if (isMeasure)
+                if (isMeasure && newField.Measure != null)
                 {
-                    f.Measure = newField.Measure;
+                    // Preserve Expression with SourceRef
+                    f.Measure ??= new VisualDto.MeasureObject();
+                    f.Measure.Property = newField.Measure.Property;
+                    f.Measure.Expression ??= new VisualDto.Expression();
+                    f.Measure.Expression.SourceRef = newField.Measure.Expression?.SourceRef != null
+                        ? new VisualDto.SourceRef
+                        {
+                            Entity = newField.Measure.Expression.SourceRef.Entity,
+                            Source = newField.Measure.Expression.SourceRef.Source
+                        }
+                        : f.Measure.Expression.SourceRef;
                     f.Column = null;
                     wasModified = true;
                 }
-                else
+                else if (!isMeasure && newField.Column != null)
                 {
-                    f.Column = newField.Column;
+                    // Preserve Expression with SourceRef
+                    f.Column ??= new VisualDto.ColumnField();
+                    f.Column.Property = newField.Column.Property;
+                    f.Column.Expression ??= new VisualDto.Expression();
+                    f.Column.Expression.SourceRef = newField.Column.Expression?.SourceRef != null
+                        ? new VisualDto.SourceRef
+                        {
+                            Entity = newField.Column.Expression.SourceRef.Entity,
+                            Source = newField.Column.Expression.SourceRef.Source
+                        }
+                        : f.Column.Expression.SourceRef;
                     f.Measure = null;
                     wasModified = true;
                 }
@@ -652,17 +1137,16 @@ namespace Report.DTO
                     Replace(proj.Field);
 
                     string entity = isMeasure
-                        ? newField.Measure.Expression?.SourceRef?.Entity
-                        : newField.Column.Expression?.SourceRef?.Entity;
+                        ? proj.Field.Measure.Expression?.SourceRef?.Entity
+                        : proj.Field.Column.Expression?.SourceRef?.Entity;
 
                     string prop = isMeasure
-                        ? newField.Measure.Property
-                        : newField.Column.Property;
+                        ? proj.Field.Measure.Property
+                        : proj.Field.Column.Property;
 
                     if (!string.IsNullOrEmpty(entity) && !string.IsNullOrEmpty(prop))
                     {
                         proj.QueryRef = $"{entity}.{prop}";
-                        //proj.NativeQueryRef = prop;
                     }
 
                     wasModified = true;
@@ -674,7 +1158,7 @@ namespace Report.DTO
 
             foreach (var proj in query?.QueryState?.Y?.Projections ?? Enumerable.Empty<VisualDto.Projection>())
                 UpdateProjection(proj);
-            
+
             foreach (var proj in query?.QueryState?.Y2?.Projections ?? Enumerable.Empty<VisualDto.Projection>())
                 UpdateProjection(proj);
 
@@ -709,7 +1193,8 @@ namespace Report.DTO
                 .Concat(objects?.ReferenceLabel ?? Enumerable.Empty<VisualDto.ObjectProperties>())
                 .Concat(objects?.ReferenceLabelDetail ?? Enumerable.Empty<VisualDto.ObjectProperties>())
                 .Concat(objects?.ReferenceLabelValue ?? Enumerable.Empty<VisualDto.ObjectProperties>())
-                .Concat(objects?.Values ?? Enumerable.Empty<VisualDto.ObjectProperties>());
+                .Concat(objects?.Values ?? Enumerable.Empty<VisualDto.ObjectProperties>())
+                .Concat(objects?.Y1AxisReferenceLine ?? Enumerable.Empty<VisualDto.ObjectProperties>());
 
             foreach (var obj in AllObjectProperties())
             {
@@ -722,13 +1207,19 @@ namespace Report.DTO
                         {
                             if (isMeasure)
                             {
-                                prop.Expr.Measure = newField.Measure;
+                                prop.Expr.Measure ??= new VisualDto.MeasureObject();
+                                prop.Expr.Measure.Property = newField.Measure.Property;
+                                prop.Expr.Measure.Expression ??= new VisualDto.Expression();
+                                prop.Expr.Measure.Expression.SourceRef = newField.Measure.Expression?.SourceRef;
                                 prop.Expr.Column = null;
                                 wasModified = true;
                             }
                             else
                             {
-                                prop.Expr.Column = newField.Column;
+                                prop.Expr.Column ??= new VisualDto.ColumnField();
+                                prop.Expr.Column.Property = newField.Column.Property;
+                                prop.Expr.Column.Expression ??= new VisualDto.Expression();
+                                prop.Expr.Column.Expression.SourceRef = newField.Column.Expression?.SourceRef;
                                 prop.Expr.Measure = null;
                                 wasModified = true;
                             }
@@ -740,13 +1231,19 @@ namespace Report.DTO
                     {
                         if (isMeasure)
                         {
-                            fillInput.Measure = newField.Measure;
+                            fillInput.Measure ??= new VisualDto.MeasureObject();
+                            fillInput.Measure.Property = newField.Measure.Property;
+                            fillInput.Measure.Expression ??= new VisualDto.Expression();
+                            fillInput.Measure.Expression.SourceRef = newField.Measure.Expression?.SourceRef;
                             fillInput.Column = null;
                             wasModified = true;
                         }
                         else
                         {
-                            fillInput.Column = newField.Column;
+                            fillInput.Column ??= new VisualDto.ColumnField();
+                            fillInput.Column.Property = newField.Column.Property;
+                            fillInput.Column.Expression ??= new VisualDto.Expression();
+                            fillInput.Column.Expression.SourceRef = newField.Column.Expression?.SourceRef;
                             fillInput.Measure = null;
                             wasModified = true;
                         }
@@ -757,19 +1254,24 @@ namespace Report.DTO
                     {
                         if (isMeasure)
                         {
-                            solidInput.Measure = newField.Measure;
+                            solidInput.Measure ??= new VisualDto.MeasureObject();
+                            solidInput.Measure.Property = newField.Measure.Property;
+                            solidInput.Measure.Expression ??= new VisualDto.Expression();
+                            solidInput.Measure.Expression.SourceRef = newField.Measure.Expression?.SourceRef;
                             solidInput.Column = null;
                             wasModified = true;
                         }
                         else
                         {
-                            solidInput.Column = newField.Column;
+                            solidInput.Column ??= new VisualDto.ColumnField();
+                            solidInput.Column.Property = newField.Column.Property;
+                            solidInput.Column.Expression ??= new VisualDto.Expression();
+                            solidInput.Column.Expression.SourceRef = newField.Column.Expression?.SourceRef;
                             solidInput.Measure = null;
                             wasModified = true;
                         }
                     }
 
-                    // ✅ NEW: handle direct measure/column under solid.color.expr
                     var solidExpr = prop.Solid?.Color?.Expr;
                     if (solidExpr != null)
                     {
@@ -781,13 +1283,19 @@ namespace Report.DTO
                         {
                             if (isMeasure)
                             {
-                                solidExpr.Measure = newField.Measure;
+                                solidExpr.Measure ??= new VisualDto.MeasureObject();
+                                solidExpr.Measure.Property = newField.Measure.Property;
+                                solidExpr.Measure.Expression ??= new VisualDto.Expression();
+                                solidExpr.Measure.Expression.SourceRef = newField.Measure.Expression?.SourceRef;
                                 solidExpr.Column = null;
                                 wasModified = true;
                             }
                             else
                             {
-                                solidExpr.Column = newField.Column;
+                                solidExpr.Column ??= new VisualDto.ColumnField();
+                                solidExpr.Column.Property = newField.Column.Property;
+                                solidExpr.Column.Expression ??= new VisualDto.Expression();
+                                solidExpr.Column.Expression.SourceRef = newField.Column.Expression?.SourceRef;
                                 solidExpr.Measure = null;
                                 wasModified = true;
                             }
@@ -802,56 +1310,56 @@ namespace Report.DTO
                 }
             }
 
-            if (Content.FilterConfig != null)
-            {
-                var filterConfigString = Content.FilterConfig.ToString();
-                string table = isMeasure ? newField.Measure.Expression.SourceRef.Entity : newField.Column.Expression.SourceRef.Entity;
-                string prop = isMeasure ? newField.Measure.Property : newField.Column.Property;
+            //if (Content.FilterConfig != null)
+            //{
+            //    var filterConfigString = Content.FilterConfig.ToString();
+            //    string table = isMeasure ? newField.Measure.Expression.SourceRef.Entity : newField.Column.Expression.SourceRef.Entity;
+            //    string prop = isMeasure ? newField.Measure.Property : newField.Column.Property;
 
-                string oldPattern = oldFieldKey;
-                string newPattern = $"'{table}'[{prop}]";
+            //    string oldPattern = oldFieldKey;
+            //    string newPattern = $"'{table}'[{prop}]";
 
-                if (filterConfigString.Contains(oldPattern))
-                {
-                    Content.FilterConfig = filterConfigString.Replace(oldPattern, newPattern);
-                    wasModified = true;
-                }
-            }
+            //    if (filterConfigString.Contains(oldPattern))
+            //    {
+            //        Content.FilterConfig = filterConfigString.Replace(oldPattern, newPattern);
+            //        wasModified = true;
+            //    }
+            //}
             if (wasModified && modifiedSet != null)
                 modifiedSet.Add(this);
-
         }
 
-        public void ReplaceInFilterConfigRaw(
-            Dictionary<string, string> tableMap,
-            Dictionary<string, string> fieldMap,
-            HashSet<VisualExtended> modifiedVisuals = null)
+        private void ReplaceInFilterConfigRaw(string oldMetadata, string newMetadata)
         {
-            if (Content.FilterConfig == null) return;
+            if (Content?.FilterConfig == null)
+                return;
 
-            string originalJson = JsonConvert.SerializeObject(Content.FilterConfig);
-            string updatedJson = originalJson;
-
-            foreach (var kv in tableMap)
-                updatedJson = updatedJson.Replace($"\"{kv.Key}\"", $"\"{kv.Value}\"");
-
-            foreach (var kv in fieldMap)
-                updatedJson = updatedJson.Replace($"\"{kv.Key}\"", $"\"{kv.Value}\"");
-
-            // Only update and track if something actually changed
-            if (updatedJson != originalJson)
+            var raw = JsonConvert.SerializeObject(Content.FilterConfig);
+            if (raw.Contains(oldMetadata))
             {
-                Content.FilterConfig = JsonConvert.DeserializeObject(updatedJson);
-                modifiedVisuals?.Add(this);
+                raw = raw.Replace(oldMetadata, newMetadata);
+                Content.FilterConfig = JsonConvert.DeserializeObject<VisualDto.FilterConfig>(raw);
             }
         }
-
     }
-
 
     public class PageExtended
     {
         public PageDto Page { get; set; }
+
+        public ReportExtended ParentReport { get; set; }
+
+        public int PageIndex
+        {
+            get
+            {
+                if (ParentReport == null || ParentReport.PagesConfig == null || ParentReport.PagesConfig.PageOrder == null)
+                    return -1;
+                return ParentReport.PagesConfig.PageOrder.IndexOf(Page.Name);
+            }
+        }
+
+
         public IList<VisualExtended> Visuals { get; set; } = new List<VisualExtended>();
         public string PageFilePath { get; set; }
     }

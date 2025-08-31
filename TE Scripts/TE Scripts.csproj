@@ -9,6 +9,10 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <LangVersion>8.0</LangVersion>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\ReportFunctions\ReportFunctions.csproj" />
     <ProjectReference Include="..\Report\Report.csproj" />

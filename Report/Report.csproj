@@ -8,7 +8,9 @@
     <Deterministic>true</Deterministic>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
-
+  <PropertyGroup>
+    <LangVersion>8.0</LangVersion>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.Collections.Immutable" Version="7.0.0" />
@@ -24,12 +26,6 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
-
-
-  <PropertyGroup>
-    <LangVersion>7.3</LangVersion>
-    <!-- default for rest of codebase -->
-  </PropertyGroup>
 
   <ItemGroup>
     <Compile Update="Report.cs">

@@ -45,23 +45,23 @@ namespace GeneralFunctions
         }
 
 
-        public static string ChooseString(IList<string> OptionList, string Label = "Choose item")
+        public static string ChooseString(IList<string> OptionList, string label = "Choose item", int customWidth = 400, int customHeight = 500)
         {
-            return ChooseStringInternal(OptionList, MultiSelect: false, Label:Label) as string;
+            return ChooseStringInternal(OptionList, MultiSelect: false, label: label, customWidth: customWidth, customHeight:customHeight) as string;
         }
 
-        public static List<string> ChooseStringMultiple(IList<string> OptionList, string Label = "Choose item(s)")
+        public static List<string> ChooseStringMultiple(IList<string> OptionList, string label = "Choose item(s)", int customWidth = 400, int customHeight = 500)
         {
-            return ChooseStringInternal(OptionList, MultiSelect:true, Label:Label) as List<string>;
+            return ChooseStringInternal(OptionList, MultiSelect:true, label:label, customWidth: customWidth, customHeight: customHeight) as List<string>;
         }
 
-        private static object ChooseStringInternal(IList<string> OptionList, bool MultiSelect, string Label = "Choose item(s)")
+        private static object ChooseStringInternal(IList<string> OptionList, bool MultiSelect, string label = "Choose item(s)", int customWidth = 400, int customHeight = 500)
         {
             Form form = new Form
             {
-                Text =Label,
-                Width = 400,
-                Height = 500,
+                Text =label,
+                Width = customWidth,
+                Height = customHeight,
                 StartPosition = FormStartPosition.CenterScreen,
                 Padding = new Padding(20)
             };
