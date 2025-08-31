@@ -1329,18 +1329,6 @@ namespace Report.DTO
                 modifiedSet.Add(this);
         }
 
-        private void ReplaceInFilterConfigRaw(string oldMetadata, string newMetadata)
-        {
-            if (Content?.FilterConfig == null)
-                return;
-
-            var raw = JsonConvert.SerializeObject(Content.FilterConfig);
-            if (raw.Contains(oldMetadata))
-            {
-                raw = raw.Replace(oldMetadata, newMetadata);
-                Content.FilterConfig = JsonConvert.DeserializeObject<VisualDto.FilterConfig>(raw);
-            }
-        }
     }
 
     public class PageExtended

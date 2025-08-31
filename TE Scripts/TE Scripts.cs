@@ -571,15 +571,7 @@ namespace TE_Scripting
 
             }
 
-            foreach (VisualExtended sourceVisual in sourceVisuals)
-            {
-                //now that the tableReplacementMap and fieldReplacementMap are ready, we can replace the filterConfig
-                sourceVisual.ReplaceInFilterConfigRaw(tableReplacementMap, fieldReplacementMap);
-
-                // Step 7: Save the visual generating the visual.json file in the target report
-                Rx.SaveVisual(sourceVisual);
-                visualsCount++;
-            }
+            
 
 
 
@@ -855,11 +847,6 @@ namespace TE_Scripting
                 
             }
 
-            // Apply raw text-based replacement to filterConfig JSON strings
-            foreach (var visual in allVisuals)
-            {
-                visual.ReplaceInFilterConfigRaw(tableReplacementMap, fieldReplacementMap, modifiedVisuals);
-            }
 
             // Save modified visuals
             foreach (var visual in modifiedVisuals)
