@@ -571,17 +571,6 @@ namespace TE_Scripting
 
             }
 
-            foreach (VisualExtended sourceVisual in sourceVisuals)
-            {
-                //now that the tableReplacementMap and fieldReplacementMap are ready, we can replace the filterConfig
-                sourceVisual.ReplaceInFilterConfigRaw(tableReplacementMap, fieldReplacementMap);
-
-                // Step 7: Save the visual generating the visual.json file in the target report
-                Rx.SaveVisual(sourceVisual);
-                visualsCount++;
-            }
-
-
 
             Output(String.Format(@"{0} Visuals copied to page '{1}' in target report.", visualsCount, ((PageExtended)targetPage).Page.DisplayName));
 
@@ -855,11 +844,7 @@ namespace TE_Scripting
                 
             }
 
-            // Apply raw text-based replacement to filterConfig JSON strings
-            foreach (var visual in allVisuals)
-            {
-                visual.ReplaceInFilterConfigRaw(tableReplacementMap, fieldReplacementMap, modifiedVisuals);
-            }
+
 
             // Save modified visuals
             foreach (var visual in modifiedVisuals)
@@ -1050,6 +1035,7 @@ namespace TE_Scripting
             string generalFunctionsClassFilePath = String.Format(@"{0}\GeneralFunctions\GeneralFunctions.cs", baseFolderPath);
             string reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);
             string reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
+           
 
             TE_Scripting.TE_Scripts.CopyMacroFromVSFile(
                 macroFilePath, generalFunctionsClassFilePath, reportClassFilePath,reportFunctionsClassFilePath
@@ -1085,6 +1071,7 @@ namespace TE_Scripting
             //String macroFilePath = String.Format(@"{0}\TE Scripts\TE Scripts.cs", baseFolderPath);
             //String generalFunctionsClassFilePath = String.Format(@"{0}\GeneralFunctions\GeneralFunctions.cs", baseFolderPath);
             //String reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);
+            //String daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
             //String reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
             String codeIndent = "            ";
             String noCopyMark = "NOCOPY";
@@ -1376,6 +1363,7 @@ namespace TE_Scripting
             }
 
 
+            
 
             //copy the code to the clipboard
             Clipboard.SetText(macroCodeClean3);
