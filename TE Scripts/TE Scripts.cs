@@ -7,7 +7,7 @@ using System.Windows.Forms;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
-
+using DaxUserDefinedFunction;
 using System.IO;
 using GeneralFunctions; //Uncomment if you use the custom class, add reference to the project too.
 using ReportFunctions;
@@ -27,7 +27,67 @@ namespace TE_Scripting
 {
     public class TE_Scripts
     {
+
         
+          
+
+        void showDaxFunctionDetails()
+        {
+            //#r "Microsoft.VisualBasic"
+
+            //using DaxUserDefinedFunction;
+            //using GeneralFunctions;
+
+            // Example usage of the FunctionExtended class
+            string daxExpression = @"(targetMeasure: EXPR, removeFilterColumn: EXPR) => CALCULATE(targetMeasure,REMOVEFILTERS(removeFilterColumn))";
+            
+            FunctionExtended func = FunctionExtended.CreateFunctionExtended("testFunction", daxExpression, "This is a test function.");
+
+            Table table = SelectTable(label: "Select table where measures will be created");
+            if (table == null) return;
+
+            IList<string> previousList = new List<string>() { func.Name+ "(" };
+            IList<string> previousListNames = new List<string>() { func.Name };
+            IList<string> currentList = new List<string>();
+            IList<string> currentListNames = new List<string>();
+            string delimiter = "";
+            string delimiterNames = " ";
+
+            foreach (var param in func.Parameters)
+            {
+                currentList = new List<string>(); //reset current list
+                currentListNames = new List<string>();
+
+                IList<string> paramObject = Fx.SelectAnyObjects(Model, prompt1: @"Select object type for {0} parameter", prompt2: "@Select item for {0} parameter", placeholderValue: param.Name);
+                if (paramObject == null || paramObject.Count == 0) return;
+
+
+
+                for (int i = 0; i < previousList.Count; i++)
+                {
+                    string s = previousList[i];
+                    string sName = previousListNames[i];
+
+                    foreach (var o in paramObject)
+                    {
+                        currentList.Add(s + delimiter + o);
+                        currentListNames.Add(sName + delimiterNames + o);
+                    }
+                }
+
+                delimiter = ", ";
+                previousList = currentList;
+                previousListNames = currentListNames;
+            }
+
+            for(int i = 0; i < currentList.Count; i++)
+            {
+                table.AddMeasure(currentListNames[i], currentList[i] + ")");
+            }
+
+        }
+
+
         void copyHeaderFormatting()
         {
 
@@ -1037,14 +1097,15 @@ namespace TE_Scripting
             string generalFunctionsClassFilePath = String.Format(@"{0}\GeneralFunctions\GeneralFunctions.cs", baseFolderPath);
             string reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);
             string reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
+            string daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
 
             TE_Scripting.TE_Scripts.CopyMacroFromVSFile(
-                macroFilePath, generalFunctionsClassFilePath, reportClassFilePath,reportFunctionsClassFilePath
+                macroFilePath, generalFunctionsClassFilePath, reportClassFilePath,reportFunctionsClassFilePath, daxUserDefinedFunctionClassFilePath
             );
         }
 
 
-        public static void CopyMacroFromVSFile(string macroFilePath, string generalFunctionsClassFilePath, string reportClassFilePath, string reportFunctionsClassFilePath)
+        public static void CopyMacroFromVSFile(string macroFilePath, string generalFunctionsClassFilePath, string reportClassFilePath, string reportFunctionsClassFilePath, string daxUserDefinedFunctionClassFilePath)
         {
             //#r "System.IO"
             //#r "Microsoft.CodeAnalysis"
@@ -1073,6 +1134,7 @@ namespace TE_Scripting
             //String generalFunctionsClassFilePath = String.Format(@"{0}\GeneralFunctions\GeneralFunctions.cs", baseFolderPath);
             //String reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);
             //String reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
+            //String daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
             String codeIndent = "            ";
             String noCopyMark = "NOCOPY";
             ////these libraries are already loaded in Tabular Editor and must not be specified
@@ -1147,6 +1209,18 @@ namespace TE_Scripting
             if (usingReportDTO)
             {
                 macroCode = macroCode.Replace("using Report.DTO;", "");
+            }
+
+            bool usingDaxUserDefinedFunction = macroCode.Contains("using DaxUserDefinedFunction;");
+            if (usingDaxUserDefinedFunction)
+            {
+                macroCode = macroCode.Replace("using DaxUserDefinedFunction;", "");
+            }
+
+            bool usingReportFunctions = macroCode.Contains("using ReportFunctions;");
+            if (usingReportFunctions)
+            {
+                macroCode = macroCode.Replace("using ReportFunctions;", "");
             }
 
             int firstCurlyBracket = macroCode.IndexOf("{");
@@ -1362,7 +1436,30 @@ namespace TE_Scripting
 
             }
 
+            if (usingDaxUserDefinedFunction)
+            {
 
+
+                // Parse the syntax tree
+                SyntaxTree daxUserDefinedFunctionClassTree = CSharpSyntaxTree.ParseText(File.ReadAllText(daxUserDefinedFunctionClassFilePath));
+                var root = daxUserDefinedFunctionClassTree.GetRoot();
+
+                // Get namespace node
+                var namespaceNode = root.DescendantNodes().OfType<NamespaceDeclarationSyntax>().First();
+
+                // Get classes that are direct children of the namespace (not nested classes)
+                var daxUserDefinedFunctionClass = namespaceNode.Members
+                    .OfType<ClassDeclarationSyntax>();
+
+                // Concatenate class codes
+                string daxUserDefinedFunctionClassCode = string.Join(
+                    Environment.NewLine,
+                    daxUserDefinedFunctionClass.Select(c => c.ToFullString())
+                );
+
+                macroCodeClean3 += Environment.NewLine + daxUserDefinedFunctionClassCode;
+
+            }
 
             //copy the code to the clipboard
             Clipboard.SetText(macroCodeClean3);
@@ -1565,7 +1662,6 @@ namespace TE_Scripting
         {
             ScriptHelper.Output(value: value, lineNumber: lineNumber);
         }
-
-
+        
     }
 }

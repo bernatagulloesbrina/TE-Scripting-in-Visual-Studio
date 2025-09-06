@@ -30,7 +30,8 @@ namespace GeneralFunctions
         // NOCOPY    in TE2 (at least up to 2.17.2) any method that accesses or modifies
         // NOCOPY    the model needs a reference to the model 
         // NOCOPY    the following is an example method where you can build extra logic
-              
+                
+
         public static Table CreateCalcTable(Model model, string tableName, string tableExpression)
         {
             return model.Tables.FirstOrDefault(t =>
@@ -42,6 +43,42 @@ namespace GeneralFunctions
         {
             string response = Interaction.InputBox(Prompt, Title, DefaultResponse, 740, 400);
             return response;
+        }
+
+        public static IList<String> SelectAnyObjects(Model model, string selectionType = null, string prompt1 = "select item type", string prompt2 = "select item(s)", string placeholderValue = "")
+        {
+            
+            if(prompt1.Contains("{0}"))
+                prompt1 = string.Format(prompt1, placeholderValue ?? "");
+
+            if(prompt2.Contains("{0}"))
+                prompt2 = string.Format(prompt2, placeholderValue ?? "");
+
+
+            if (selectionType == null)
+            {
+                IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "Scalar" };
+                selectionType = ChooseString(selectionTypeOptions, label: prompt1);
+            }
+
+            if (selectionType == null) return null;
+            
+            switch (selectionType)
+            {
+                case "Table":
+                    return SelectTableMultiple(model, label: prompt2);
+                case "Column":
+                    return SelectColumnMultiple(model, label: prompt2);
+                case "Measure":
+                    
+                    return SelectMeasureMultiple(model: model, label: prompt2);
+                //case "Scalar":
+                //    selectedType = "Scalar";
+                //    return GetNameFromUser("Enter scalar value", "Scalar value", "0");
+                default:
+                    Error("Invalid selection type");
+                    return null;
+            }
         }
 
 
@@ -169,6 +206,34 @@ namespace GeneralFunctions
 
         }
 
+        public static IList<string> SelectMeasureMultiple(Model model, IEnumerable<Measure> measures = null, string label = "Select Measure(s)")
+        {
+            measures ??= model.AllMeasures;
+            IList<string> measureNames = measures.Select(m => m.DaxObjectFullName).ToList();
+            IList<string> selectedMeasureNames = ChooseStringMultiple(measureNames, label: label);
+            return selectedMeasureNames; 
+            
+        }
+
+        public static IList<string> SelectColumnMultiple(Model model, IEnumerable<Column> columns = null, string label = "Select Columns(s)")
+        {
+            columns ??= model.AllColumns;
+            IList<string> columnNames = columns.Select(m => m.DaxObjectFullName).ToList();
+            IList<string> selectedColumnNames = ChooseStringMultiple(columnNames, label: label);
+            return selectedColumnNames;
+
+        }
+
+        public static IList<string> SelectTableMultiple(Model model, IEnumerable<Table> Tables = null, string label = "Select Tables(s)")
+        {
+            Tables ??= model.Tables;
+            IList<string> TableNames = Tables.Select(m => m.DaxObjectFullName).ToList();
+            IList<string> selectedTableNames = ChooseStringMultiple(TableNames, label: label);
+            return selectedTableNames;
+
+        }
+
+
         // NOCOPY add other methods always as "public static" followed by the data type they will return or void if they do not return anything.
 
         //}
@@ -202,6 +267,11 @@ namespace GeneralFunctions
         public static Measure SelectMeasure(Measure preselect = null, string label = "Select Table")
         {
             return ScriptHelper.SelectMeasure(preselect: preselect, label: label);
+        }
+
+        public static Column SelectColumn(IEnumerable<Column> columns, Column preselect = null, string label = "Select Column")
+        {
+            return ScriptHelper.SelectColumn(columns: columns, preselect: preselect, label: label);
         }
         public static void Output(object value, int lineNumber = -1)
         {
