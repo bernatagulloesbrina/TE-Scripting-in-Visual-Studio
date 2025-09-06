@@ -631,9 +631,6 @@ namespace TE_Scripting
 
             }
 
-            
-
-
 
             Output(String.Format(@"{0} Visuals copied to page '{1}' in target report.", visualsCount, ((PageExtended)targetPage).Page.DisplayName));
 
@@ -908,6 +905,7 @@ namespace TE_Scripting
             }
 
 
+
             // Save modified visuals
             foreach (var visual in modifiedVisuals)
             {
@@ -1133,6 +1131,7 @@ namespace TE_Scripting
             //String macroFilePath = String.Format(@"{0}\TE Scripts\TE Scripts.cs", baseFolderPath);
             //String generalFunctionsClassFilePath = String.Format(@"{0}\GeneralFunctions\GeneralFunctions.cs", baseFolderPath);
             //String reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);
+            //String daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
             //String reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
             //String daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
             String codeIndent = "            ";
