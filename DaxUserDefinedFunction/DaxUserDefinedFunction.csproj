@@ -39,10 +39,22 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
+    <Reference Include="TabularEditor">
+      <HintPath>..\..\..\..\Downloads\UDF\TE2-UDFs\TabularEditor.exe</HintPath>
+    </Reference>
+    <Reference Include="TOMWrapper14">
+      <HintPath>..\..\..\..\AppData\Local\TabularEditor\TOMWrapper14.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DaxUserDefinedFunction.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GeneralFunctions\GeneralFunctions.csproj">
+      <Project>{1251ae0a-7803-4000-9868-5c82613f3aa6}</Project>
+      <Name>GeneralFunctions</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

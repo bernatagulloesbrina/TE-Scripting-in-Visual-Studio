@@ -11,6 +11,8 @@ using static Report.DTO.VisualDto;
 
 namespace Report.DTO
 {
+    
+
     public class PagesDto
     {
         [Newtonsoft.Json.JsonProperty("$schema")]

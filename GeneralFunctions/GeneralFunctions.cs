@@ -45,10 +45,18 @@ namespace GeneralFunctions
             return response;
         }
 
-        public static IList<String> SelectAnyObjects(Model model, string selectionType = null, string prompt1 = "select item type", string prompt2 = "select item(s)", string placeholderValue = "")
+        public static bool IsAnswerYes(string question, string title = "Please confirm")
         {
+            var result = MessageBox.Show(question, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            return result == DialogResult.Yes;
+        }
+        public static (IList<string> Values, string Type) SelectAnyObjects(Model model, string selectionType = null, string prompt1 = "select item type", string prompt2 = "select item(s)", string placeholderValue = "")
+        {
+
             
-            if(prompt1.Contains("{0}"))
+            var returnEmpty = (Values: new List<string>(), Type: (string)null);
+
+            if (prompt1.Contains("{0}"))
                 prompt1 = string.Format(prompt1, placeholderValue ?? "");
 
             if(prompt2.Contains("{0}"))
@@ -58,27 +66,36 @@ namespace GeneralFunctions
             if (selectionType == null)
             {
                 IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "Scalar" };
-                selectionType = ChooseString(selectionTypeOptions, label: prompt1);
+                selectionType = ChooseString(selectionTypeOptions, label: prompt1, customWidth: 600);
             }
 
-            if (selectionType == null) return null;
-            
+            if (selectionType == null) return returnEmpty;
+
+            IList<string> selectedValues = new List<string>();
             switch (selectionType)
             {
                 case "Table":
-                    return SelectTableMultiple(model, label: prompt2);
+                    selectedValues = SelectTableMultiple(model, label: prompt2);
+                    break;
                 case "Column":
-                    return SelectColumnMultiple(model, label: prompt2);
+                    selectedValues = SelectColumnMultiple(model, label: prompt2);
+                    break;
                 case "Measure":
-                    
-                    return SelectMeasureMultiple(model: model, label: prompt2);
-                //case "Scalar":
-                //    selectedType = "Scalar";
-                //    return GetNameFromUser("Enter scalar value", "Scalar value", "0");
+
+                    selectedValues = SelectMeasureMultiple(model: model, label: prompt2);
+                    break;
+                case "Scalar":
+                    IList<string> scalarList = new List<string>();
+                    scalarList.Add(GetNameFromUser(prompt2, "Scalar value", "0"));
+                    selectedValues = scalarList;
+                    break;
                 default:
                     Error("Invalid selection type");
-                    return null;
+                    return returnEmpty;
+
             }
+            if (selectedValues.Count == 0) return returnEmpty; 
+            return (Values:selectedValues, Type:selectionType);
         }
 
 
@@ -87,7 +104,7 @@ namespace GeneralFunctions
             return ChooseStringInternal(OptionList, MultiSelect: false, label: label, customWidth: customWidth, customHeight:customHeight) as string;
         }
 
-        public static List<string> ChooseStringMultiple(IList<string> OptionList, string label = "Choose item(s)", int customWidth = 400, int customHeight = 500)
+        public static List<string> ChooseStringMultiple(IList<string> OptionList, string label = "Choose item(s)", int customWidth = 650, int customHeight = 550)
         {
             return ChooseStringInternal(OptionList, MultiSelect:true, label:label, customWidth: customWidth, customHeight: customHeight) as List<string>;
         }
@@ -97,8 +114,6 @@ namespace GeneralFunctions
             Form form = new Form
             {
                 Text =label,
-                Width = customWidth,
-                Height = customHeight,
                 StartPosition = FormStartPosition.CenterScreen,
                 Padding = new Padding(20)
             };
@@ -115,15 +130,15 @@ namespace GeneralFunctions
             FlowLayoutPanel buttonPanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 40,
+                Height = 70,
                 FlowDirection = FlowDirection.LeftToRight,
                 Padding = new Padding(10)
             };
 
-            Button selectAllButton = new Button { Text = "Select All", Visible = MultiSelect };
-            Button selectNoneButton = new Button { Text = "Select None", Visible = MultiSelect };
-            Button okButton = new Button { Text = "OK", DialogResult = DialogResult.OK };
-            Button cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel };
+            Button selectAllButton = new Button { Text = "Select All", Visible = MultiSelect , Height = 50, Width = 150};
+            Button selectNoneButton = new Button { Text = "Select None", Visible = MultiSelect, Height = 50, Width = 150 };
+            Button okButton = new Button { Text = "OK", DialogResult = DialogResult.OK, Height = 50, Width = 100 };
+            Button cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Height = 50, Width = 100 };
 
             selectAllButton.Click += delegate
             {
@@ -144,6 +159,9 @@ namespace GeneralFunctions
 
             form.Controls.Add(listbox);
             form.Controls.Add(buttonPanel);
+
+            form.Width = customWidth;
+            form.Height = customHeight;
 
             DialogResult result = form.ShowDialog();
             if (result == DialogResult.Cancel)
@@ -182,6 +200,127 @@ namespace GeneralFunctions
             return dateTables;
         }
 
+        public static Table GetDateTable(Model model, string prompt = "Select Date Table")
+        {
+            var dateTables = GetDateTables(model);
+            if (dateTables == null) {
+                Table t = SelectTable(model.Tables, label: prompt);
+                if(t == null)
+                {
+                    Error("No table selected");
+                    return null;
+                }
+                if (IsAnswerYes(String.Format("Mark {0} as date table?",t.DaxObjectFullName)))
+                {
+                    t.DataCategory = "Time";
+                    var dateColumns = t.Columns
+                        .Where(c => c.DataType == DataType.DateTime)
+                        .ToList();
+                    if(dateColumns.Count == 0)
+                    {
+                        Error(String.Format(@"No date column detected in the table {0}. Please check that the table contains a date column",t.Name));
+                        return null;
+                    }
+                    var keyColumn = SelectColumn(dateColumns, preselect:dateColumns.First(), label: "Select Date Column to be used as key column");
+                    if(keyColumn == null)
+                    {
+                        Error("No key column selected");
+                        return null;
+                    }
+                    keyColumn.IsKey = true;
+                }
+
+                return t;
+            };
+            if (dateTables.Count() == 1)
+                return dateTables.First();
+
+            Table dateTable = SelectTable(dateTables, label: prompt);
+            if(dateTable == null)
+            {
+                Error("No table selected");
+                return null;
+            }
+            return dateTable;
+        }
+
+        public static Column GetDateColumn(Table dateTable, string prompt = "Select Date Column")
+        {
+            var dateColumns = dateTable.Columns
+                .Where(c => c.DataType == DataType.DateTime)
+                .ToList();
+            if(dateColumns.Count == 0)
+            {
+                Error(String.Format(@"No date column detected in the table {0}. Please check that the table contains a date column", dateTable.Name));
+                return null;
+            }
+
+            if(dateColumns.Any(c => c.IsKey))
+            {
+                return dateColumns.First(c => c.IsKey);
+            }
+
+            Column dateColumn = null;
+            if (dateColumns.Count() == 1)
+            {
+                dateColumn = dateColumns.First();
+            }
+            else
+            {
+                dateColumn = SelectColumn(dateColumns, label: prompt);
+                if (dateColumn == null)
+                {
+                    Error("No column selected");
+                    return null;
+                }
+            }
+
+            return dateColumn;
+
+        }
+
+
+        public static IEnumerable<Table> GetFactTables(Model model)
+        {
+            IEnumerable<Table> factTables = model.Tables.Where(
+                x => model.Relationships.Where(r => r.ToTable == x)
+                        .All(r => r.ToCardinality == RelationshipEndCardinality.Many)
+                    && model.Relationships.Where(r => r.FromTable == x)
+                        .All(r => r.FromCardinality == RelationshipEndCardinality.Many)
+                    && model.Relationships.Where(r => r.ToTable == x || r.FromTable == x).Any()); // at least one relationship
+
+            if (!factTables.Any())
+            {
+                Error("No fact table detected in the model. Please check that the model contains relationships");
+                return null;
+            }
+            return factTables;
+        }
+
+        public static Table GetFactTable(Model model, string prompt = "Select Fact Table")
+        {
+            Table factTable = null;
+            var factTables = GetFactTables(model);
+            if (factTables == null)
+            {
+               factTable = SelectTable(model.Tables, label: "This does not look like a star schema. Choose your fact table manually");
+                if (factTable == null)
+                {
+                    Error("No table selected");
+                    return null;
+                }
+                return factTable;
+            };
+            if (factTables.Count() == 1)
+                return factTables.First();
+            factTable = SelectTable(factTables, label: prompt);
+            if (factTable == null)
+            {
+                Error("No table selected");
+                return null;
+            }
+            return factTable;
+        }
 
         public static Table GetTablesWithAnnotation(IEnumerable<Table> tables, string annotationLabel, string annotationValue)
         {
@@ -224,11 +363,11 @@ namespace GeneralFunctions
 
         }
 
-        public static IList<string> SelectTableMultiple(Model model, IEnumerable<Table> Tables = null, string label = "Select Tables(s)")
+        public static IList<string> SelectTableMultiple(Model model, IEnumerable<Table> Tables = null, string label = "Select Tables(s)", int customWidth = 400)
         {
             Tables ??= model.Tables;
             IList<string> TableNames = Tables.Select(m => m.DaxObjectFullName).ToList();
-            IList<string> selectedTableNames = ChooseStringMultiple(TableNames, label: label);
+            IList<string> selectedTableNames = ChooseStringMultiple(TableNames, label: label, customWidth: customWidth);
             return selectedTableNames;
 
         }

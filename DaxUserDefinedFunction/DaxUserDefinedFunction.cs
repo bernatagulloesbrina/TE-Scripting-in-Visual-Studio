@@ -1,9 +1,10 @@
-﻿using System;
+﻿using GeneralFunctions; 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-
+using TabularEditor.TOMWrapper;
 namespace DaxUserDefinedFunction
 {
     
@@ -13,6 +14,13 @@ namespace DaxUserDefinedFunction
         public string Name { get; set; }
         public string Expression { get; set; }
         public string Description { get; set; }
+        public string OutputFormatString { get; set; }
+        public string OutputNameTemplate { get; set; }
+        public string OutputType { get; set; }
+        public string OutputDisplayFolder { get; set; }
+
+        public string OutputDestination { get; set; } 
+        public Function OriginalFunction { get; set; }
         public List<FunctionParameter> Parameters { get; set; }
         private static List<FunctionParameter> ExtractParametersFromExpression(string expression)
         {
@@ -78,19 +86,151 @@ namespace DaxUserDefinedFunction
 
             return paramList;
         }
-        public static FunctionExtended CreateFunctionExtended(string name, string expression, string description)
+        public static FunctionExtended CreateFunctionExtended(Function function)
         {
-            var function = new FunctionExtended
+
+            FunctionExtended emptyFunction = null as FunctionExtended;
+            List<FunctionParameter> Parameters =  ExtractParametersFromExpression (function.Expression);
+
+            string nameTemplateDefault = "";
+            string formatStringDefault = "";
+            string displayFolderDefault = "";
+            string functionNameShort = function.Name;
+            string destinationDefault = ""; 
+
+            if(function.Name.IndexOf(".") > 0)
             {
-                Name = name,
-                Expression = expression,
-                Description = description,
-                Parameters = ExtractParametersFromExpression(expression)
+                functionNameShort = function.Name.Substring(function.Name.LastIndexOf(".") + 1);
+            }
+
+            if (Parameters.Count == 0) {
+                nameTemplateDefault = function.Name;
+                formatStringDefault = "";
+                displayFolderDefault = "";
+                destinationDefault = "";
+            }
+            else
+            {
+                nameTemplateDefault = string.Join(" ", Parameters.Select(p => p.Name + "Name"));
+                if(function.Name.Contains("Pct"))
+                {
+                    formatStringDefault = "+0.0%;-0.0%;-";
+                }
+                else
+                {
+                    formatStringDefault = Parameters[0].Name + "FormatStringRoot";
+                }
+
+
+                    
+                displayFolderDefault = 
+                    String.Format(
+                        @"{0}DisplayFolder/{1}Name {2}", 
+                        Parameters[0].Name, 
+                        Parameters[0].Name,
+                        functionNameShort);
+                
+                if (Parameters[0].Name.ToUpper().Contains("TABLE"))
+                {
+                    destinationDefault = Parameters[0].Name;
+                }
+                else if (Parameters[0].Name.ToUpper().Contains("MEASURE") || Parameters[0].Name.ToUpper().Contains("COLUMN"))
+                {
+                    destinationDefault = Parameters[0].Name + "Table";
+                }
+                else
+                {
+                    destinationDefault = "Custom";
+                }
+                
+
             };
-            return function;
+            
+            
+
+
+            string myOutputType = function.GetAnnotation("outputType"); 
+            string myNameTemplate = function.GetAnnotation("nameTemplate");
+            string myFormatString = function.GetAnnotation("formatString");
+            string myDisplayFolder = function.GetAnnotation("displayFolder");
+            string myOutputDestination = function.GetAnnotation("outputDestination");
+
+            if (string.IsNullOrEmpty(myOutputType))
+            {
+                IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "None" };
+                myOutputType = 
+                    Fx.ChooseString(
+                        OptionList: selectionTypeOptions, 
+                        label: "Choose output type for function" + function.Name, 
+                        customWidth: 600);
+                if (string.IsNullOrEmpty(myOutputType)) return emptyFunction;
+                function.SetAnnotation("outputType", myOutputType);
+            }
+
+            if (string.IsNullOrEmpty(myNameTemplate))
+            {
+                myNameTemplate = Fx.GetNameFromUser(Prompt:"Enter output name template for function " + function.Name,  "Name Template", nameTemplateDefault);
+                if (string.IsNullOrEmpty(myNameTemplate)) return emptyFunction;
+                function.SetAnnotation("nameTemplate", myNameTemplate);
+            }
+            if(string.IsNullOrEmpty(myFormatString))
+            {
+                myFormatString = Fx.GetNameFromUser(Prompt: "Enter output format string for function " + function.Name, "Format String", formatStringDefault);
+                if (string.IsNullOrEmpty(myFormatString)) return emptyFunction;
+                function.SetAnnotation("formatString", myFormatString);
+
+            }
+            if(string.IsNullOrEmpty(myDisplayFolder))
+            {
+                myDisplayFolder = 
+                    Fx.GetNameFromUser(
+                        Prompt: "Enter output display folder for function " + function.Name, 
+                        Title:"Display Folder", 
+                        DefaultResponse: displayFolderDefault);
+
+                if (string.IsNullOrEmpty(myDisplayFolder)) return emptyFunction;
+                function.SetAnnotation("displayFolder", myDisplayFolder);
+            }
+
+            if (string.IsNullOrEmpty(myOutputDestination))
+            {
+                if(myOutputType ==  "Table")
+                {
+                    myOutputDestination = "Model";
+                }
+                else if(myOutputType == "Column" ||  myOutputType == "Measure")
+                {
+                    myOutputDestination = 
+                        Fx.GetNameFromUser(
+                            Prompt: "Enter Destination template for " + function.Name, 
+                            Title:"Destination", 
+                            DefaultResponse: destinationDefault);
+
+                    if(string.IsNullOrEmpty(myOutputDestination)) return emptyFunction;
+                    function.SetAnnotation("outputDestination", destinationDefault);
+                }
+            }
+
+
+            var functionExtended = new FunctionExtended
+            {
+                Name = function.Name,
+                Expression = function.Expression,
+                Description = function.Description,
+                Parameters = Parameters,
+                OutputFormatString = myFormatString,
+                OutputNameTemplate = myNameTemplate,
+                OutputType = myOutputType,
+                OutputDisplayFolder = myDisplayFolder,
+                OutputDestination = myOutputDestination,
+                OriginalFunction = function
+
+            };
+
+            return functionExtended;
         }
 
-
+        
     }
 
     public class FunctionParameter
