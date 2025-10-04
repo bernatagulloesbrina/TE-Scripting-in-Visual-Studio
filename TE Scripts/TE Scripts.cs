@@ -32,7 +32,26 @@ namespace TE_Scripting
         void createTimeIntelFunctions()
         {
             //using GeneralFunctions;
-            //using DaxUserDefinedFunction; 
+
+            // 2025-09-29/B.Agullo
+            // Creates Time Intelligence functions (CY, PY, YOY, YOYPCT) in the model if they do not exist.
+            // It also creates a hidden calculated column and measure in the date table to handle cases where the fact table has no data for some dates.
+            // The script assumes there is a date table and a fact table in the model.
+            // The script will prompt the user to select the main date column in the fact table if there are multiple date columns.
+            
+            if(Model.Database.CompatibilityLevel < 1702)
+            {
+                if(Fx.IsAnswerYes("The model compatibility level is below 1702. Time Intelligence functions are only supported in 1702 or higher. Do to change the compatibility level to 1702?"))
+                {
+                    Model.Database.CompatibilityLevel = 1702;
+                }
+                else
+                {
+                    Info("Operation cancelled.");
+                    return;
+                }
+            }
+
 
             Table dateTable = Fx.GetDateTable(model: Model);
             if (dateTable == null) return;
@@ -74,8 +93,8 @@ namespace TE_Scripting
             string dateTableAuxColumnName = "DateWith" + factTable.Name.Replace(" ", "");
             string dateTableAuxColumnExpression = String.Format(@"{0} <= MAX({1})", dateColumn.DaxObjectFullName, factTableDateColumn.DaxObjectFullName);
             
-            Column dateTableAuxColumn = dateTable.AddCalculatedColumn(dateTableAuxColumnName, dateTableAuxColumnExpression);
-            // dateTableAuxColumn.FormatDax(); 
+            CalculatedColumn dateTableAuxColumn = dateTable.AddCalculatedColumn(dateTableAuxColumnName, dateTableAuxColumnExpression);
+            dateTableAuxColumn.FormatDax(); 
 
             dateTableAuxColumn.IsHidden = true;
 
@@ -109,11 +128,11 @@ namespace TE_Scripting
             CYfunction.Expression = CYfunctionExpression;
             CYfunction.FormatDax();
 
-            CYfunction.SetAnnotation("displayFolder", "baseMeasureName TimeIntel");
+            CYfunction.SetAnnotation("displayFolder", @"baseMeasureDisplayFolder\baseMeasureName TimeIntel");
             CYfunction.SetAnnotation("formatString", "baseMeasureFormatStringFull");
             CYfunction.SetAnnotation("outputType", "Measure");
             CYfunction.SetAnnotation("nameTemplate", "baseMeasureName CY");
-            CYfunction.SetAnnotation("destination", "baseMeasureTable");
+            CYfunction.SetAnnotation("outputDestination", "baseMeasureTable");
 
             //PY
 
@@ -143,11 +162,11 @@ namespace TE_Scripting
             PYfunction.Expression = PYfunctionExpression;
             PYfunction.FormatDax();
 
-            PYfunction.SetAnnotation("displayFolder", "baseMeasureName TimeIntel");
+            PYfunction.SetAnnotation("displayFolder", @"baseMeasureDisplayFolder\baseMeasureName TimeIntel");
             PYfunction.SetAnnotation("formatString", "baseMeasureFormatStringFull");
             PYfunction.SetAnnotation("outputType", "Measure");
             PYfunction.SetAnnotation("nameTemplate", "baseMeasureName PY");
-            PYfunction.SetAnnotation("destination", "baseMeasureTable");
+            PYfunction.SetAnnotation("outputDestination", "baseMeasureTable");
 
             //YOY
             string YOYfunctionName = "Model.TimeIntel.YOY";
@@ -169,11 +188,11 @@ namespace TE_Scripting
             YOYfunction.Expression = YOYfunctionExpression;
             YOYfunction.FormatDax();
 
-            YOYfunction.SetAnnotation("displayFolder", "baseMeasureName TimeIntel");
-            YOYfunction.SetAnnotation("formatString", "+baseMeasureFormatStringRoot;-baseMeasureStringRoot;-");
+            YOYfunction.SetAnnotation("displayFolder", @"baseMeasureDisplayFolder\baseMeasureName TimeIntel");
+            YOYfunction.SetAnnotation("formatString", "+baseMeasureFormatStringRoot;-baseMeasureFormatStringRoot;-");
             YOYfunction.SetAnnotation("outputType", "Measure");
             YOYfunction.SetAnnotation("nameTemplate", "baseMeasureName YOY");
-            YOYfunction.SetAnnotation("destination", "baseMeasureTable");
+            YOYfunction.SetAnnotation("outputDestination", "baseMeasureTable");
 
             //YOY%
             string YOYPfunctionName = "Model.TimeIntel.YOYPCT";
@@ -199,11 +218,11 @@ namespace TE_Scripting
             YOYPfunction.Expression = YOYPfunctionExpression;
             YOYPfunction.FormatDax();
 
-            YOYPfunction.SetAnnotation("displayFolder", "baseMeasureName TimeIntel");
+            YOYPfunction.SetAnnotation("displayFolder", @"baseMeasureDisplayFolder\baseMeasureName TimeIntel");
             YOYPfunction.SetAnnotation("formatString", "+0.0%;-0.0%;-");
             YOYPfunction.SetAnnotation("outputType", "Measure");
             YOYPfunction.SetAnnotation("nameTemplate", "baseMeasureName YOY%");
-            YOYPfunction.SetAnnotation("destination", "baseMeasureTable");
+            YOYPfunction.SetAnnotation("outputDestination", "baseMeasureTable");
 
 
         }
@@ -458,7 +477,8 @@ namespace TE_Scripting
 
                             if (paramFormatStringFull.Contains(";"))
                             {
-                                paramFormatStringRoot = paramFormatStringFull.Split(';')[0];
+                                //keep the first part of the format string, strip it of any + sign
+                                paramFormatStringRoot = paramFormatStringFull.Split(';')[0].Replace("+","");
                             }
                             else
                             {
@@ -1621,7 +1641,6 @@ namespace TE_Scripting
             //String reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);
             //String daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
             //String reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
-            //String daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
             String codeIndent = "            ";
             String noCopyMark = "NOCOPY";
             ////these libraries are already loaded in Tabular Editor and must not be specified
@@ -1785,8 +1804,12 @@ namespace TE_Scripting
                 }
 
 
-                int hashrFirstMacroCode = Math.Max(previousCode.IndexOf("#r"), 0);
+
+                int hashrFirstMacroCode = previousCode.IndexOf("#r");
                 int hashrFirstCustomClass = codeToAppend.IndexOf("#r");
+
+                int hasrLastMacroCode = previousCode.LastIndexOf("#r");
+                int endOfHashrMacroCode = previousCode.IndexOf(Environment.NewLine, Math.Max(hasrLastMacroCode,0));
 
                 if (hashrFirstCustomClass != -1)
                 {
@@ -1815,7 +1838,8 @@ namespace TE_Scripting
                                 + previousCode.Substring(hashrFirstMacroCode);
 
                             //update the position of the first #r
-                            hashrFirstMacroCode = Math.Max(previousCode.IndexOf("#r"), 0);
+                            hashrFirstMacroCode = previousCode.IndexOf("#r");
+                            endOfHashrMacroCode = previousCode.IndexOf(Environment.NewLine, Math.Max(hasrLastMacroCode, 0));
                         }
 
 
@@ -1826,7 +1850,7 @@ namespace TE_Scripting
                     //remove #r directives from custom class 
                     codeToAppend = codeToAppend.Replace(codeToAppend.Substring(hashrFirstCustomClass, endOfHashrCustomClass - hashrFirstCustomClass), "");
 
-                    int usingFirstMacroCode = Math.Max(previousCode.IndexOf("using"), 0);
+                    int usingFirstMacroCode = Math.Max(previousCode.IndexOf("using"), endOfHashrMacroCode);
                     int usingFirstCustomClass = codeToAppend.IndexOf("using");
 
                     if (usingFirstCustomClass != -1)
@@ -1955,149 +1979,6 @@ namespace TE_Scripting
         }
             
         
-
-
-        //public static string CombineWithCustomClass(string previousCode,string customClassFilePath)
-        //{
-        //    string customClassEndMark = @"//******************";
-        //    string customClassIndent = "    ";
-        //    string noCopyMark = "NOCOPY";
-        //    //these libraries are already loaded in Tabular Editor and must not be specified
-        //    string[] tabularEditorLibraries = { "#r \"System.Windows.Forms\"" };
-
-
-        //    string codeToAppend = "";
-
-        //    //check the custom className 
-        //    SyntaxTree customClassTree = CSharpSyntaxTree.ParseText(File.ReadAllText(customClassFilePath));
-
-        //    string customClassNamespaceName = customClassTree.GetRoot().DescendantNodes().OfType<NamespaceDeclarationSyntax>().First().Name.ToString();
-
-        //    ClassDeclarationSyntax customClass = customClassTree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().First();
-
-        //    String customClassCode = customClass.ToString();
-
-        //    int endMarkIndex = customClassCode.IndexOf(customClassEndMark);
-
-        //    //crop the last part and uncomment the closing bracket
-        //    customClassCode = customClassCode.Substring(0, endMarkIndex - 1).Replace("        //}", "}").Replace("//using", "using").Replace("//#r", "#r");
-
-            
-        //    string[] customClassCodeLines = customClassCode.Split('\n');
-
-        //    foreach (string customClassCodeLine in customClassCodeLines)
-        //    {
-        //        if (customClassCodeLine.Contains(noCopyMark))
-        //        {
-        //            //do nothing
-        //        }
-        //        else if (customClassCodeLine.StartsWith(customClassIndent))
-        //        {
-        //            codeToAppend += customClassCodeLine.Substring(customClassIndent.Length) + Environment.NewLine;
-        //        }
-        //        else
-        //        {
-        //            codeToAppend += customClassCodeLine + Environment.NewLine;
-        //        }
-        //    }
-
-
-        //    int hashrFirstMacroCode = Math.Max(previousCode.IndexOf("#r"), 0);
-        //    int hashrFirstCustomClass = codeToAppend.IndexOf("#r");
-
-        //    if (hashrFirstCustomClass != -1)
-        //    {
-        //        int hashrLastCustomClass = codeToAppend.LastIndexOf("#r");
-        //        int endOfHashrCustomClass = codeToAppend.IndexOf(Environment.NewLine, hashrLastCustomClass);
-
-        //        string[] hashrLines = codeToAppend.Substring(hashrFirstCustomClass, endOfHashrCustomClass - hashrFirstCustomClass).Split('\n');
-
-
-
-        //        foreach (String hashrLine in hashrLines)
-        //        {
-
-
-
-        //            if (tabularEditorLibraries.Contains(hashrLine.Trim()))
-        //            {
-        //                //do nothing
-        //            }
-        //            //if #r directive not present
-        //            else if (!previousCode.Contains(hashrLine.Trim()))
-        //            {
-        //                //insert in the code right before the first one
-        //                previousCode = previousCode.Substring(0, Math.Max(hashrFirstMacroCode - 1, 0))
-        //                    + hashrLine.Trim() + Environment.NewLine
-        //                    + previousCode.Substring(hashrFirstMacroCode);
-
-        //                //update the position of the first #r
-        //                hashrFirstMacroCode = Math.Max(previousCode.IndexOf("#r"), 0);
-        //            }
-
-
-        //        }
-
-
-
-        //        //remove #r directives from custom class 
-        //        codeToAppend = codeToAppend.Replace(codeToAppend.Substring(hashrFirstCustomClass, endOfHashrCustomClass - hashrFirstCustomClass), "");
-
-        //        int usingFirstMacroCode = Math.Max(previousCode.IndexOf("using"), 0);
-        //        int usingFirstCustomClass = codeToAppend.IndexOf("using");
-
-        //        if (usingFirstCustomClass != -1)
-        //        {
-        //            int usingLastCustomClass = codeToAppend.LastIndexOf("using");
-        //            int endOfusingCustomClass = codeToAppend.IndexOf(Environment.NewLine, usingLastCustomClass);
-
-        //            string[] usingLines = codeToAppend.Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass).Split('\n');
-
-        //            foreach (String usingLine in usingLines)
-        //            {
-        //                //if using directive not present
-        //                if (!previousCode.Contains(usingLine))
-        //                {
-        //                    //insert in the code right before the first one
-        //                    previousCode = previousCode.Substring(0, Math.Max(usingFirstMacroCode - 1, 0))
-        //                        + Environment.NewLine + usingLine.Trim() + Environment.NewLine
-        //                        + previousCode.Substring(usingFirstMacroCode);
-
-        //                    usingFirstMacroCode = Math.Max(previousCode.IndexOf("using"), 0);
-        //                }
-        //            }
-
-        //            //remove using directives from custom class 
-        //            codeToAppend = codeToAppend
-        //                                       .Replace(codeToAppend
-        //                                            .Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass) + Environment.NewLine,
-        //                                            "");
-
-        //        }
-
-        //        //remove empty lines
-        //        previousCode = Regex.Replace(previousCode, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline);
-        //        codeToAppend = Regex.Replace(codeToAppend, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline);
-
-                
-        //    }
-
-        //    string outputCode = previousCode += Environment.NewLine + codeToAppend;
-
-        //    int lastUsingFinal = outputCode.IndexOf("using");
-
-        //    if (lastUsingFinal != -1)
-        //    {
-        //        int endOfDirective = outputCode.IndexOf(";", lastUsingFinal) + 1;
-        //        outputCode = outputCode.Substring(0, endOfDirective)
-        //            + Environment.NewLine
-        //            + Environment.NewLine
-        //            + outputCode.Substring(endOfDirective + 1);
-
-        //    }
-
-        //    return outputCode;
-        //}
 
 
         
