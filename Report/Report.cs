@@ -308,9 +308,7 @@ namespace Report.DTO
             [JsonProperty("legend")] public List<VisualDto.ObjectProperties> Legend { get; set; }
             [JsonProperty("labels")] public List<VisualDto.ObjectProperties> Labels { get; set; }
             [JsonProperty("dataPoint")] public List<VisualDto.ObjectProperties> DataPoint { get; set; }
-            [JsonProperty("columnFormatting")]
-            public List<VisualDto.ObjectProperties> ColumnFormatting { get; set; }
-
+            [JsonProperty("columnFormatting")] public List<VisualDto.ObjectProperties> ColumnFormatting { get; set; }
             [JsonProperty("referenceLabel")] public List<VisualDto.ObjectProperties> ReferenceLabel { get; set; }
             [JsonProperty("referenceLabelDetail")] public List<VisualDto.ObjectProperties> ReferenceLabelDetail { get; set; }
             [JsonProperty("referenceLabelValue")] public List<VisualDto.ObjectProperties> ReferenceLabelValue { get; set; }
@@ -318,7 +316,6 @@ namespace Report.DTO
             [JsonProperty("values")] public List<VisualDto.ObjectProperties> Values { get; set; }
 
             [JsonProperty("y1AxisReferenceLine")] public List<VisualDto.ObjectProperties> Y1AxisReferenceLine { get; set; }
-
 
             [JsonExtensionData] public Dictionary<string, JToken> ExtensionData { get; set; }
         }
@@ -341,7 +338,7 @@ namespace Report.DTO
 
         public class VisualObjectProperty
         {
-            [JsonProperty("expr")] public Field Expr { get; set; }
+            [JsonProperty("expr")] public VisualPropertyExpr Expr { get; set; }
             [JsonProperty("solid")] public SolidColor Solid { get; set; }
             [JsonProperty("color")] public ColorExpression Color { get; set; }
 
@@ -349,6 +346,27 @@ namespace Report.DTO
             public List<Paragraph> Paragraphs { get; set; }
 
             [JsonExtensionData] public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class VisualPropertyExpr
+        {
+            // Existing Field properties
+            [JsonProperty("Measure")] public MeasureObject Measure { get; set; }
+            [JsonProperty("Column")] public ColumnField Column { get; set; }
+            [JsonProperty("Aggregation")] public Aggregation Aggregation { get; set; }
+            [JsonProperty("NativeVisualCalculation")] public NativeVisualCalculation NativeVisualCalculation { get; set; }
+
+            // New properties from JSON
+            [JsonProperty("SelectRef")] public SelectRefExpression SelectRef { get; set; }
+            [JsonProperty("Literal")] public VisualLiteral Literal { get; set; }
+
+            [JsonExtensionData] public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class SelectRefExpression
+        {
+            [JsonProperty("ExpressionName")]
+            public string ExpressionName { get; set; }
         }
 
         public class Paragraph
@@ -802,10 +820,12 @@ namespace Report.DTO
             return fields.Where(f => f != null);
         }
 
-        private IEnumerable<VisualDto.Field> GetFieldsFromProjections(VisualDto.ProjectionsSet set)
+        public IEnumerable<VisualDto.Field> GetFieldsFromProjections(VisualDto.ProjectionsSet set)
         {
             return set?.Projections?.Select(p => p.Field) ?? Enumerable.Empty<VisualDto.Field>();
         }
+
+        
 
         private IEnumerable<VisualDto.Field> GetFieldsFromObjectList(List<VisualDto.ObjectProperties> objectList)
         {

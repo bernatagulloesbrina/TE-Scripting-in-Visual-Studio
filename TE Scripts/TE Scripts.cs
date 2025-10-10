@@ -28,7 +28,413 @@ namespace TE_Scripting
     public class TE_Scripts
     {
 
-        
+        void adjustLineOverColumns()
+        {
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using ReportFunctions;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+
+
+
+
+            //check if there's a matching visual in the report
+            ReportExtended report = Rx.InitReport();
+            if (report == null) return;
+
+            List<string> visualTypes = new List<string>() { "lineClusteredColumnComboChart" };
+            VisualExtended selectedVisual = Rx.SelectVisual(report, visualTypes);
+            if (selectedVisual == null) return;
+
+            var queryState = selectedVisual.Content?.Visual?.Query?.QueryState;
+
+            var categories = queryState.Category.Projections;
+            var columns = queryState.Y.Projections;
+            var lines = queryState.Y2.Projections;
+
+
+            if (categories.Count() == 0 || columns.Count() == 0 || lines.Count() == 0)
+            {
+                Error("Chart not completely configured. Please configure at least a field for x-axis, one for the columns and one for the line");
+                return;
+            }
+
+            Table formattingTable = Fx.CreateCalcTable(Model,"Formatting");
+            if(formattingTable == null) return;
+
+            bool globalPaddingCreated = false;
+            bool lineChartHeightCreated = false;
+            bool secondaryMaxFunctionCreated = false;
+            bool secondaryMinFunctionCreated = false;
+            bool primaryMaxFunctionCreated = false;
+
+            Measure globalPaddingMeasure = Fx.CreateMeasure(
+                table: formattingTable,
+                measureName: "GlobalPadding",
+                measureExpression: "0.1", 
+                out globalPaddingCreated,
+                description: "Global padding to apply to secondary axis max calculation (10% by default)",
+                annotationLabel: "@AgulloBernat",
+                annotationValue: "GlobalPadding",
+                isHidden: true);
+            if(globalPaddingMeasure == null) return;
+
+            Measure lineChartHeight = Fx.CreateMeasure(
+                table: formattingTable,
+                measureName: "LineChartHeight",
+                measureExpression: "0.4", 
+                out lineChartHeightCreated,
+                description: "Percent of the chart height for the line chart",
+                annotationLabel: "@AgulloBernat",
+                annotationValue: "LineChartHeight",
+                isHidden: true);
+            if(lineChartHeight == null) return;
+
+            string secondaryMaxName = "Formatting.AxisMaxMin.SecondaryMax";
+            string secondaryMaxExpression =
+                @"(
+                    lineMaxExpression: ANYREF EXPR,
+                    xAxisColumn: ANYREF EXPR,
+                    paddingScalar:ANYVAL
+                ) =>
+
+                EXPAND( MAXX( ROWS, lineMaxExpression ), xAxisColumn ) * ( 1 + paddingScalar )";
+
+            string secondaryMaxAnnotationLabel = "@AgulloBernat"; 
+            string secondaryMaxAnnotationValue = "Formatting.AxisMaxMin.SecondaryMax";
+
+            Function secondaryMaxFunction = Fx.CreateFunction(
+                model: Model, 
+                name: secondaryMaxName, 
+                expression: secondaryMaxExpression,
+                out secondaryMaxFunctionCreated,
+                annotationLabel: secondaryMaxAnnotationLabel, 
+                annotationValue: secondaryMaxAnnotationValue);
+
+
+            string secondaryMinName = "Formatting.AxisMaxMin.SecondaryMin";
+            string secondaryMinExpression =
+                @"(
+                    lineMinExpression: ANYREF EXPR,
+                    xAxisColumn: ANYREF EXPR,
+                    paddingScalar: ANYVAL DECIMAL,
+                    secondaryAxisMaxValue: ANYVAL DECIMAL,
+                    lineChartWeight: ANYVAL DECIMAL
+                ) =>
+                VAR _lineMinVal =
+                    EXPAND(
+                        MINX( ROWS, lineMinExpression ),
+                        xAxisColumn
+                    )
+                        * ( 1 - paddingScalar )
+                VAR _lineHeight = secondaryAxisMaxValue - _lineMinVal
+                VAR _secondaryAxisHeight = _lineHeight / lineChartWeight
+                VAR _result = secondaryAxisMaxValue - _secondaryAxisHeight
+                RETURN
+                    _result";
+
+            string secondaryMinAnnotationLabel = "@AgulloBernat";
+            string secondaryMinAnnotationValue = "Formatting.AxisMaxMin.SecondaryMin";
+            Function secondaryMinFunction = Fx.CreateFunction(
+                model: Model,
+                name: secondaryMinName,
+                expression: secondaryMinExpression,
+                out secondaryMinFunctionCreated,
+                annotationLabel: secondaryMinAnnotationLabel,
+                annotationValue: secondaryMinAnnotationValue);
+
+
+            string primaryMaxName = "Formatting.AxisMaxMin.PrimaryMax";
+            string primaryMaxExpression =
+                @"(
+                    columnMaxExpression: ANYREF EXPR,
+                    xAxisColumn: ANYREF EXPR,
+                    paddingScalar: ANYVAL DECIMAL,
+                    lineChartWeight: ANYVAL DECIMAL
+                ) =>
+                VAR _maxColumnValue =
+                    EXPAND(
+                        MAXX( ROWS, columnMaxExpression ),
+                        xAxisColumn
+                    )
+                        * ( 1 + paddingScalar )
+                VAR _result = _maxColumnValue / ( 1 - lineChartWeight )
+                RETURN
+                    _result";
+
+            string primaryMaxAnnotationLabel = "@AgulloBernat";
+            string primaryMaxAnnotationValue = "Formatting.AxisMaxMin.PrimaryMax";
+            Function primaryMaxFunction = Fx.CreateFunction(
+                model: Model,
+                name: primaryMaxName,
+                expression: primaryMaxExpression,
+                out primaryMaxFunctionCreated,
+                annotationLabel: primaryMaxAnnotationLabel,
+                annotationValue: primaryMaxAnnotationValue);
+
+            if (globalPaddingCreated || lineChartHeightCreated || secondaryMaxFunctionCreated || secondaryMinFunctionCreated || primaryMaxFunctionCreated)
+            {
+                Info("Some elements were added to the semantic model. Commit changes to the model, save your progress and run this script again");
+                return;
+            }
+
+            //all elements were already in place, time to proceed with the report layer
+            
+
+            var paddingProjection = new VisualDto.Projection
+            {
+                Field = new VisualDto.Field
+                {
+                    Measure = new VisualDto.MeasureObject
+                    {
+                        Expression = new VisualDto.Expression
+                        {
+                            SourceRef = new VisualDto.SourceRef
+                            {
+                                Entity = globalPaddingMeasure.Table.Name
+                                
+                            }
+                        },
+                        Property = globalPaddingMeasure.Name
+                    }
+                },
+                QueryRef = globalPaddingMeasure.Table.Name + "." + globalPaddingMeasure.Name,
+                NativeQueryRef = globalPaddingMeasure.Name,
+                Hidden = true
+            };
+
+
+
+
+            var lineChartHeightProjection = new VisualDto.Projection
+            {
+                Field = new VisualDto.Field
+                {
+                    Measure = new VisualDto.MeasureObject
+                    {
+                        Expression = new VisualDto.Expression
+                        {
+                            SourceRef = new VisualDto.SourceRef
+                            {
+                                Entity = lineChartHeight.Table.Name
+                            }
+                        },
+                        Property = lineChartHeight.Name
+                    }
+                },
+                QueryRef = lineChartHeight.Table.Name + "." + lineChartHeight.Name,
+                NativeQueryRef = lineChartHeight.Name,
+                Hidden = true
+            };
+
+
+            if(categories.Count() > 1)
+            {
+                Error("Multiple fields found in x-axis. Not implemented yet");
+                return;
+            }
+
+            //variables used in different visual calculations
+            string xAxisColumn = "[" + categories[0].NativeQueryRef + "]";
+            string paddingScalar = "[" + paddingProjection.NativeQueryRef + "]";
+            string lineChartWeight = "[" + lineChartHeightProjection.NativeQueryRef + "]";
+
+
+            string secondaryMaxLineMaxExpression = String.Format(
+                "MAXX({{{0}}},[Value])",
+                "[" + string.Join(
+                    "],[",
+                    lines.Select(l=> l.NativeQueryRef)) + "]"
+                );
+            
+            string secondaryMaxVisualCalcExpression = 
+                String.Format(
+                    @"{3}(
+                        {0},
+                        {1},
+                        {2}
+                    )",
+                    secondaryMaxLineMaxExpression,
+                    xAxisColumn,
+                    paddingScalar,
+                    secondaryMaxFunction.Name
+                );
+
+            var secondaryMaxVisualCalcProjection = new VisualDto.Projection
+            {
+                Field = new VisualDto.Field
+                {
+                    NativeVisualCalculation = new VisualDto.NativeVisualCalculation
+                    {
+                        Language = "dax",
+                        Expression= secondaryMaxVisualCalcExpression, 
+                        Name = "secondaryMax"
+                    }
+                },
+                QueryRef = "secondaryMax",
+                NativeQueryRef = "secondaryMax", 
+                Hidden = true
+            };
+
+            
+
+            string secondaryAxisMaxValue = "[" + secondaryMaxVisualCalcProjection.NativeQueryRef + "]";
+            string lineMinExpression = String.Format(
+                "MINX({{{0}}},[Value])",
+                "[" + string.Join(
+                    "],[",
+                    lines.Select(l => l.NativeQueryRef)) + "]"
+                );
+            
+            string secondaryMinVisualCalcExpression = 
+                String.Format(
+                    @"{5}(
+                        {0},
+                        {1},
+                        {2},
+                        {3},
+                        {4}
+                    )",
+                    lineMinExpression,
+                    xAxisColumn,
+                    paddingScalar,
+                    secondaryAxisMaxValue,
+                    lineChartWeight,
+                    secondaryMinFunction.Name
+                );
+
+            var secondaryMinVisualCalcProjection = new VisualDto.Projection
+            {
+                Field = new VisualDto.Field
+                {
+                    NativeVisualCalculation = new VisualDto.NativeVisualCalculation
+                    {
+                        Language = "dax",
+                        Expression = secondaryMinVisualCalcExpression,
+                        Name = "secondaryMin"
+                    }
+                },
+                QueryRef = "secondaryMin",
+                NativeQueryRef = "secondaryMin",
+                Hidden = true
+            };
+            
+
+
+            string primaryMaxColumnMaxExpression = String.Format(
+                "MAXX({{{0}}},[Value])",
+                "[" + string.Join(
+                    "],[",
+                    columns.Select(l => l.NativeQueryRef)) + "]"
+                );
+            string primaryMaxVisualCalcExpression =
+                String.Format(
+                    @"{4}(
+                        {0},
+                        {1},
+                        {2},
+                        {3}
+                    )",
+                    primaryMaxColumnMaxExpression,
+                    xAxisColumn,
+                    paddingScalar,
+                    lineChartWeight,
+                    primaryMaxFunction.Name
+                );
+
+            var primaryMaxVisualCalcProjection = new VisualDto.Projection
+            {
+                Field = new VisualDto.Field
+                {
+                    NativeVisualCalculation = new VisualDto.NativeVisualCalculation
+                    {
+                        Language = "dax",
+                        Expression = primaryMaxVisualCalcExpression,
+                        Name = "primaryMax"
+                    }
+                },
+                QueryRef = "primaryMax",
+                NativeQueryRef = "primaryMax",
+                Hidden = true
+            };
+
+
+            columns.Add(paddingProjection);
+            columns.Add(lineChartHeightProjection);
+            columns.Add(secondaryMaxVisualCalcProjection);
+            columns.Add(secondaryMinVisualCalcProjection);
+            columns.Add(primaryMaxVisualCalcProjection);
+
+            if (selectedVisual.Content.Visual.Objects == null)
+                selectedVisual.Content.Visual.Objects = new VisualDto.Objects();
+
+            if (selectedVisual.Content.Visual.Objects.ValueAxis == null)
+                selectedVisual.Content.Visual.Objects.ValueAxis = new List<VisualDto.ObjectProperties>();
+
+            // Ensure there's at least one ObjectProperties entry
+            if (selectedVisual.Content.Visual.Objects.ValueAxis.Count == 0)
+            {
+                selectedVisual.Content.Visual.Objects.ValueAxis.Add(new VisualDto.ObjectProperties
+                {
+                    Properties = new Dictionary<string, object>()
+                });
+            }
+
+            var valueAxisProperties = selectedVisual.Content.Visual.Objects.ValueAxis[0].Properties;
+
+            // secondary axis min
+            valueAxisProperties["secStart"] = new VisualDto.VisualObjectProperty
+            {
+                Expr = new VisualDto.VisualPropertyExpr
+                {
+                   SelectRef = new VisualDto.SelectRefExpression
+                   {
+                        ExpressionName = "secondaryMin"
+                   }
+                }
+            };
+
+            // secondary axis max
+            valueAxisProperties["secEnd"] = new VisualDto.VisualObjectProperty
+            {
+                Expr = new VisualDto.VisualPropertyExpr
+                {
+                    SelectRef = new VisualDto.SelectRefExpression
+                    {
+                        ExpressionName = "secondaryMax"
+                    }
+                }
+            };
+
+            //main axis min
+            valueAxisProperties["start"] = new VisualDto.VisualObjectProperty
+            {
+                Expr = new VisualDto.VisualPropertyExpr
+                {
+                    Literal = new VisualDto.VisualLiteral
+                    {
+                        Value = "0D"
+                    }
+                }
+            };
+
+            //main axis max
+            valueAxisProperties["end"] = new VisualDto.VisualObjectProperty
+            {
+                Expr = new VisualDto.VisualPropertyExpr
+                {
+                    SelectRef = new VisualDto.SelectRefExpression
+                    {
+                        ExpressionName = "primaryMax"
+                    }
+                }
+            };
+
+            Rx.SaveVisual(selectedVisual);
+
+        }
+
         void createTimeIntelFunctions()
         {
             //using GeneralFunctions;
@@ -121,7 +527,7 @@ namespace TE_Scripting
 
 
             //CY --just for the sake of completion 
-            string CYfunctionName = "Model.TimeIntel.CY";
+            string CYfunctionName = "Local.TimeIntel.CY";
             string CYfunctionExpression = "(baseMeasure) => baseMeasure";
 
             Function CYfunction = Model.AddFunction(CYfunctionName);
@@ -136,7 +542,7 @@ namespace TE_Scripting
 
             //PY
 
-            string PYfunctionName = "Model.TimeIntel.PY";
+            string PYfunctionName = "Local.TimeIntel.PY";
             string PYfunctionExpression = 
                 String.Format(
                     @"(baseMeasure: ANYREF) =>
@@ -169,11 +575,11 @@ namespace TE_Scripting
             PYfunction.SetAnnotation("outputDestination", "baseMeasureTable");
 
             //YOY
-            string YOYfunctionName = "Model.TimeIntel.YOY";
+            string YOYfunctionName = "Local.TimeIntel.YOY";
             string YOYfunctionExpression =
                 @"(baseMeasure: ANYREF) =>
-                VAR ValueCurrentPeriod = Model.TimeIntel.CY(baseMeasure)
-                VAR ValuePreviousPeriod = Model.TimeIntel.PY(baseMeasure)
+                VAR ValueCurrentPeriod = Local.TimeIntel.CY(baseMeasure)
+                VAR ValuePreviousPeriod = Local.TimeIntel.PY(baseMeasure)
                 VAR Result =
 	                IF(
 		                NOT ISBLANK( ValueCurrentPeriod )
@@ -195,11 +601,11 @@ namespace TE_Scripting
             YOYfunction.SetAnnotation("outputDestination", "baseMeasureTable");
 
             //YOY%
-            string YOYPfunctionName = "Model.TimeIntel.YOYPCT";
+            string YOYPfunctionName = "Local.TimeIntel.YOYPCT";
             string YOYPfunctionExpression =
                 @"(baseMeasure: ANYREF) =>
-                VAR ValueCurrentPeriod = Model.TimeIntel.CY(baseMeasure)
-                VAR ValuePreviousPeriod = Model.TimeIntel.PY(baseMeasure)
+                VAR ValueCurrentPeriod = Local.TimeIntel.CY(baseMeasure)
+                VAR ValuePreviousPeriod = Local.TimeIntel.PY(baseMeasure)
                 VAR CurrentMinusPreviousPeriod =
 	                IF(
 		                NOT ISBLANK( ValueCurrentPeriod )
@@ -226,63 +632,6 @@ namespace TE_Scripting
 
 
         }
-
-
-
-
-
-        void setFunctionOutputDisplayFolderTemplate()
-        {
-            //using GeneralFunctions;
-            //using DaxUserDefinedFunction; 
-
-            // Validate selection
-            if (Selected.Functions.Count() == 0)
-            {
-                Error("Select one or more functions and try again.");
-                return;
-            }
-
-            // Create FunctionExtended objects for each selected function and store them for later iteration
-            IList<FunctionExtended> selectedFunctions = new List<FunctionExtended>();
-
-            foreach (var f in Selected.Functions)
-            {
-                // Create the FunctionExtended and add to list
-                FunctionExtended fe = FunctionExtended.CreateFunctionExtended(f);
-                selectedFunctions.Add(fe);
-            }
-
-            // --- New: Verify that all selected functions have the same parameters in the same order ---
-            var referenceParameters = selectedFunctions.First().Parameters ?? new List<FunctionParameter>();
-            foreach (var func in selectedFunctions.Skip(1))
-            {
-                var currentParameters = func.Parameters ?? new List<FunctionParameter>();
-                // quick check on count
-                if (referenceParameters.Count != currentParameters.Count)
-                {
-                    Error(String.Format("All selected functions must have the same parameters in the same order. '{0}' has a different number of parameters than '{1}'.", func.Name, selectedFunctions.First().Name));
-                    return;
-                }
-
-                // check names in order
-                bool sameInOrder = true;
-                for (int i = 0; i < referenceParameters.Count; i++)
-                {
-                    if (!String.Equals(referenceParameters[i].Name, currentParameters[i].Name, StringComparison.Ordinal))
-                    {
-                        sameInOrder = false;
-                        break;
-                    }
-                }
-
-                if (!sameInOrder)
-                {
-                    Error(String.Format("All selected functions must have the same parameters in the same order. Parameter mismatch found in function '{0}' compared to '{1}'.", func.Name, selectedFunctions.First().Name));
-                    return;
-                }
-            }
-        }  
 
         void SingleMeasureParameterFunction()
         {
@@ -1839,6 +2188,7 @@ namespace TE_Scripting
 
                             //update the position of the first #r
                             hashrFirstMacroCode = previousCode.IndexOf("#r");
+                            hasrLastMacroCode = previousCode.LastIndexOf("#r");
                             endOfHashrMacroCode = previousCode.IndexOf(Environment.NewLine, Math.Max(hasrLastMacroCode, 0));
                         }
 

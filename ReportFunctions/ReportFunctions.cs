@@ -353,6 +353,8 @@ namespace ReportFunctions
             return SelectVisual(report: report, visualTypes);
         }
 
+
+
         public static VisualExtended SelectVisual(ReportExtended report, List<string> visualTypeList = null)
         {
             return SelectVisualInternal(report, Multiselect: false, visualTypeList:visualTypeList) as VisualExtended;

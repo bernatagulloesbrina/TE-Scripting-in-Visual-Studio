@@ -86,6 +86,9 @@ namespace DaxUserDefinedFunction
 
             return paramList;
         }
+
+        
+
         public static FunctionExtended CreateFunctionExtended(Function function)
         {
 

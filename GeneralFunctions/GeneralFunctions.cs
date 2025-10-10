@@ -30,13 +30,118 @@ namespace GeneralFunctions
         // NOCOPY    in TE2 (at least up to 2.17.2) any method that accesses or modifies
         // NOCOPY    the model needs a reference to the model 
         // NOCOPY    the following is an example method where you can build extra logic
-                
 
-        public static Table CreateCalcTable(Model model, string tableName, string tableExpression)
+        public static Function CreateFunction(
+            Model model,
+            string name,
+            string expression,
+            out bool functionCreated,
+            string description = null,
+            string annotationLabel = null,
+            string annotationValue = null,
+            string outputType = null,
+            string nameTemplate = null,
+            string formatString = null,
+            string displayFolder = null,
+            string outputDestination = null)
+        {
+
+            Function function = null as Function;
+            functionCreated = false;
+
+            var matchingFunctions = model.Functions.Where(f => f.GetAnnotation(annotationLabel) == annotationValue);
+            if (matchingFunctions.Count() == 1)
+            {
+                return matchingFunctions.First();
+            }
+            else if (matchingFunctions.Count() == 0)
+            {
+                function = model.AddFunction(name);
+                function.Expression = expression;
+                function.Description = description;
+                functionCreated = true;
+
+
+            }
+            else
+            {
+                Error("More than one function found with annoation " + annotationLabel + " value " + annotationValue);
+                return null as Function;
+            }
+
+            if (!string.IsNullOrEmpty(annotationLabel) && !string.IsNullOrEmpty(annotationValue))
+            {
+                function.SetAnnotation(annotationLabel, annotationValue);
+            }
+            if (!string.IsNullOrEmpty(outputType))
+            {
+                function.SetAnnotation("outputType", outputType);
+            }
+            if (!string.IsNullOrEmpty(nameTemplate))
+            {
+                function.SetAnnotation("nameTemplate", nameTemplate);
+            }
+            if (!string.IsNullOrEmpty(formatString))
+            {
+                function.SetAnnotation("formatString", formatString);
+            }
+            if (!string.IsNullOrEmpty(displayFolder))
+            {
+                function.SetAnnotation("displayFolder", displayFolder);
+            }
+            if (!string.IsNullOrEmpty(outputDestination))
+            {
+                function.SetAnnotation("outputDestination", outputDestination);
+            }
+            return function;
+
+        }
+        public static Table CreateCalcTable(Model model, string tableName, string tableExpression = "FILTER({0},FALSE)")
         {
             return model.Tables.FirstOrDefault(t =>
                                 string.Equals(t.Name, tableName, StringComparison.OrdinalIgnoreCase)) //case insensitive search
                                 ?? model.AddCalculatedTable(tableName, tableExpression);
+        }
+
+        public static Measure CreateMeasure(
+            Table table, 
+            string measureName, 
+            string measureExpression,
+            out bool measureCreated,
+            string formatString = null,
+            string displayFolder = null,
+            string description = null,
+            string annotationLabel = null, 
+            string annotationValue = null,
+            bool isHidden = false)
+        {
+            measureCreated = false;
+            var matchingMeasures = table.Measures.Where(m => m.GetAnnotation(annotationLabel) == annotationValue);
+            if (matchingMeasures.Count() == 1)
+            {
+                return matchingMeasures.First();
+            }
+            else if (matchingMeasures.Count() == 0)
+            {
+                Measure measure = table.AddMeasure(measureName, measureExpression);
+                measure.Description = description;
+                measure.DisplayFolder = displayFolder;
+                measure.FormatString = formatString;
+                measureCreated = true;
+
+                if (!string.IsNullOrEmpty(annotationLabel) && !string.IsNullOrEmpty(annotationValue))
+                {
+                    measure.SetAnnotation(annotationLabel, annotationValue);
+                }
+                measure.IsHidden = isHidden;
+                return measure;
+            }
+            else
+            {
+                Error("More than one measure found with annoation " + annotationLabel + " value " + annotationValue);
+                Output(matchingMeasures);
+                return null as Measure;
+            }
         }
 
         public static string GetNameFromUser(string Prompt, string Title, string DefaultResponse)
