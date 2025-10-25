@@ -31,6 +31,22 @@ namespace GeneralFunctions
         // NOCOPY    the model needs a reference to the model 
         // NOCOPY    the following is an example method where you can build extra logic
 
+        public static void CheckCompatibilityVersion(Model model, int requiredVersion, string customMessage = "Compatibility level must be raised to {0} to run this script. Do you want raise the compatibility level?")
+        {
+            if (model.Database.CompatibilityLevel < requiredVersion)
+            {
+                if (Fx.IsAnswerYes(String.Format("The model compatibility level is below {0}. " + customMessage, requiredVersion)))
+                {
+                    model.Database.CompatibilityLevel = requiredVersion;
+                }
+                else
+                {
+                    Info("Operation cancelled.");
+                    return;
+                }
+            }
+        }
+
         public static Function CreateFunction(
             Model model,
             string name,
@@ -116,7 +132,18 @@ namespace GeneralFunctions
             bool isHidden = false)
         {
             measureCreated = false;
-            var matchingMeasures = table.Measures.Where(m => m.GetAnnotation(annotationLabel) == annotationValue);
+
+
+            IEnumerable<Measure> matchingMeasures = null as IEnumerable<Measure>;
+            if (!string.IsNullOrEmpty(annotationLabel) && !string.IsNullOrEmpty(annotationValue))
+            {
+                matchingMeasures = table.Measures.Where(m => m.GetAnnotation(annotationLabel) == annotationValue);
+            }
+            else
+            {
+                matchingMeasures = table.Measures.Where(m => m.Name == measureName);
+            }
+
             if (matchingMeasures.Count() == 1)
             {
                 return matchingMeasures.First();

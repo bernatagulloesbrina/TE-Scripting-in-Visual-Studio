@@ -1,21 +1,24 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using TabularEditor.TOMWrapper;
-using TabularEditor.Scripting;
-using System.Windows.Forms;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.CSharp;
-using DaxUserDefinedFunction;
-using System.IO;
+﻿using DaxUserDefinedFunction;
 using GeneralFunctions; //Uncomment if you use the custom class, add reference to the project too.
-using ReportFunctions;
-using Report.DTO;
-using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.VisualBasic;
+using Report.DTO;
+using ReportFunctions;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection.Emit;
+using System.Text.RegularExpressions;
+using System.Windows.Forms;
 using TabularEditor;
+using TabularEditor.Scripting;
+using TabularEditor.TOMWrapper;
+using TabularEditor.UI;
 using static Report.DTO.VisualDto;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
 
 
 
@@ -28,6 +31,134 @@ namespace TE_Scripting
     public class TE_Scripts
     {
 
+        void copyConditionalFormatting()
+        {
+
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+            // 2025-10-22 / B.Agullo
+            // Copies conditional formatting from one header to multiple other headers in a table visual.
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
+            // Step 1: Initialize report
+            ReportExtended report = Rx.InitReport();
+            if (report == null) return;
+
+            VisualExtended selectedVisual = Rx.SelectTableVisual(report);
+            if (selectedVisual == null) return;
+
+            // Step 2: Extract all headers from projections (not just those with formatting)
+            var projectionHeaders = selectedVisual.Content?.Visual?.Query?.QueryState?.Values?.Projections
+                .Select(p => p.QueryRef)
+                .Where(h => !string.IsNullOrEmpty(h))
+                .Distinct()
+                .ToList();
+
+            if (projectionHeaders == null || projectionHeaders.Count == 0)
+            {
+                Error("No headers found in the visual projections.");
+                return;
+            }
+
+            // Step 3: Extract all displayed headers (with formatting objects)
+            var formattedHeaders = selectedVisual.Content?.Visual?.Objects?.Values?
+                .Select(cf => cf.Selector?.Metadata)
+                .Where(h => !string.IsNullOrEmpty(h))
+                .Distinct()
+                .ToList();
+
+            // Step 4: Let user choose the source header for formatting (from all projection headers)
+            string sourceHeader = Fx.ChooseString(
+                OptionList: projectionHeaders,
+                label: "Select the header to copy formatting from"
+            );
+            if (string.IsNullOrEmpty(sourceHeader)) return;
+
+            // Step 5: Let user choose target headers (multi-select, exclude source)
+            List<string> targetHeaders = Fx.ChooseStringMultiple(
+                OptionList: projectionHeaders.Where(h => h != sourceHeader).ToList(),
+                label: "Select headers to apply the formatting to"
+            );
+            if (targetHeaders == null || targetHeaders.Count == 0)
+            {
+                Info("No target headers selected.");
+                return;
+            }
+
+            // Step 6: Get source formatting (excluding selector)
+            var sourceFormatting = selectedVisual.Content.Visual.Objects.Values
+                .FirstOrDefault(cf => cf.Selector?.Metadata == sourceHeader);
+
+            if (sourceFormatting == null)
+            {
+                Error("Source header formatting not found.");
+                return;
+            }
+
+            // Step 7: Apply formatting to target headers
+            int updatedCount = 0;
+            foreach (var targetHeader in targetHeaders)
+            {
+                var targetFormatting = selectedVisual.Content.Visual.Objects.Values
+                    .FirstOrDefault(cf => cf.Selector != null && cf.Selector.Metadata == targetHeader);
+
+                if (targetFormatting != null)
+                {
+                    // Copy all properties except Selector
+                    var sourceProps = typeof(VisualDto.ObjectProperties).GetProperties();
+                    foreach (var prop in sourceProps)
+                    {
+                        if (prop.Name == "Selector") continue;
+                        prop.SetValue(targetFormatting, prop.GetValue(sourceFormatting, null), null);
+                    }
+                    updatedCount++;
+                }
+                else
+                {
+                    // Create new ObjectProperties and copy all except Selector
+                    var newFormatting = new VisualDto.ObjectProperties();
+                    var sourceProps = typeof(VisualDto.ObjectProperties).GetProperties();
+                    foreach (var prop in sourceProps)
+                    {
+                        if (prop.Name == "Selector")
+                        {
+                            // Create new Selector and set Metadata to targetHeader
+                            newFormatting.Selector = new VisualDto.Selector { 
+                                Data = new List<VisualDto.DataObject>()
+                                {
+                                    new VisualDto.DataObject { 
+                                        DataViewWildcard = new VisualDto.DataViewWildcard()
+                                        {
+                                            MatchingOption = 1 
+                                        }
+
+                                    } 
+                                },
+                                Metadata = targetHeader 
+                            };
+                        }
+                        else
+                        {
+                            prop.SetValue(newFormatting, prop.GetValue(sourceFormatting, null), null);
+                        }
+                    }
+                    if (selectedVisual.Content.Visual.Objects.Values == null)
+                        selectedVisual.Content.Visual.Objects.Values = new List<VisualDto.ObjectProperties>();
+                    selectedVisual.Content.Visual.Objects.Values.Add(newFormatting);
+                    updatedCount++;
+                }
+            }
+
+            Rx.SaveVisual(selectedVisual);
+            Output(String.Format(@"{0} headers updated with formatting from '{1}'.", updatedCount, sourceHeader));
+        }
+
+
         void adjustLineOverColumns()
         {
             //using GeneralFunctions;
@@ -36,7 +167,21 @@ namespace TE_Scripting
             //using System.IO;
             //using Newtonsoft.Json.Linq;
 
+            // 2025-10-11 / B.Agullo
+            // Adjusts the line and column axis min/max values in a Line and Clustered Column Combo Chart to ensure that the line is always fully visible.
+            // It creates a "Formatting" calculation table with measures and functions to calculate the axis min/max values dynamically based on the data in the visual.
+            // It assumes the visual has at least one field in the x-axis, one for the columns and one for the line.
+            // It modifies the visual to use these calculations for the axis min/max values.
+            // It is recommended to create a backup of the model before running this script as it modifies both the model and the report.
+            // The script only works with "lineClusteredColumnComboChart" visuals.
 
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
+            // Check model compatibility level
+            Fx.CheckCompatibilityVersion(Model, 1702, "Time Intelligence functions are only supported in 1702 or higher.Do you want to change the compatibility level to 1702?");
+            if (Model.Database.CompatibilityLevel < 1702) return;
 
 
             //check if there's a matching visual in the report
@@ -49,9 +194,9 @@ namespace TE_Scripting
 
             var queryState = selectedVisual.Content?.Visual?.Query?.QueryState;
 
-            var categories = queryState.Category.Projections;
-            var columns = queryState.Y.Projections;
-            var lines = queryState.Y2.Projections;
+            var categories = queryState?.Category?.Projections ?? new List<VisualDto.Projection>();
+            var columns = queryState?.Y?.Projections ?? new List<VisualDto.Projection>();
+            var lines = queryState?.Y2?.Projections ?? new List<VisualDto.Projection>();
 
 
             if (categories.Count() == 0 || columns.Count() == 0 || lines.Count() == 0)
@@ -173,7 +318,11 @@ namespace TE_Scripting
                 annotationLabel: primaryMaxAnnotationLabel,
                 annotationValue: primaryMaxAnnotationValue);
 
-            if (globalPaddingCreated || lineChartHeightCreated || secondaryMaxFunctionCreated || secondaryMinFunctionCreated || primaryMaxFunctionCreated)
+            if (globalPaddingCreated 
+                || lineChartHeightCreated 
+                || secondaryMaxFunctionCreated 
+                || secondaryMinFunctionCreated 
+                || primaryMaxFunctionCreated)
             {
                 Info("Some elements were added to the semantic model. Commit changes to the model, save your progress and run this script again");
                 return;
@@ -250,15 +399,11 @@ namespace TE_Scripting
             
             string secondaryMaxVisualCalcExpression = 
                 String.Format(
-                    @"{3}(
-                        {0},
-                        {1},
-                        {2}
-                    )",
+                    @"{0}({1},{2},{3})",
+                    secondaryMaxFunction.Name,
                     secondaryMaxLineMaxExpression,
                     xAxisColumn,
-                    paddingScalar,
-                    secondaryMaxFunction.Name
+                    paddingScalar
                 );
 
             var secondaryMaxVisualCalcProjection = new VisualDto.Projection
@@ -289,19 +434,14 @@ namespace TE_Scripting
             
             string secondaryMinVisualCalcExpression = 
                 String.Format(
-                    @"{5}(
-                        {0},
-                        {1},
-                        {2},
-                        {3},
-                        {4}
-                    )",
+                    @"{0}({1},{2},{3},{4},{5})",
+                    secondaryMinFunction.Name,
                     lineMinExpression,
                     xAxisColumn,
                     paddingScalar,
                     secondaryAxisMaxValue,
-                    lineChartWeight,
-                    secondaryMinFunction.Name
+                    lineChartWeight
+                    
                 );
 
             var secondaryMinVisualCalcProjection = new VisualDto.Projection
@@ -330,17 +470,13 @@ namespace TE_Scripting
                 );
             string primaryMaxVisualCalcExpression =
                 String.Format(
-                    @"{4}(
-                        {0},
-                        {1},
-                        {2},
-                        {3}
-                    )",
+                    @"{0}({1},{2},{3},{4})",
+                    primaryMaxFunction.Name,
                     primaryMaxColumnMaxExpression,
                     xAxisColumn,
                     paddingScalar,
-                    lineChartWeight,
-                    primaryMaxFunction.Name
+                    lineChartWeight
+                    
                 );
 
             var primaryMaxVisualCalcProjection = new VisualDto.Projection
@@ -432,6 +568,9 @@ namespace TE_Scripting
             };
 
             Rx.SaveVisual(selectedVisual);
+            Info("Visual on page '" 
+                + selectedVisual.ParentPage.Page.Name 
+                + "' has been modified. Close and reopen the report to see the changes"); 
 
         }
 
@@ -444,8 +583,12 @@ namespace TE_Scripting
             // It also creates a hidden calculated column and measure in the date table to handle cases where the fact table has no data for some dates.
             // The script assumes there is a date table and a fact table in the model.
             // The script will prompt the user to select the main date column in the fact table if there are multiple date columns.
-            
-            if(Model.Database.CompatibilityLevel < 1702)
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
+            if (Model.Database.CompatibilityLevel < 1702)
             {
                 if(Fx.IsAnswerYes("The model compatibility level is below 1702. Time Intelligence functions are only supported in 1702 or higher. Do to change the compatibility level to 1702?"))
                 {
@@ -645,6 +788,9 @@ namespace TE_Scripting
             //using DaxUserDefinedFunction;
             //using System.Text.RegularExpressions;
 
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             // PSEUDOCODE / PLAN:
             // 1. Verify that the user has selected one or more functions (Selected.Functions).
@@ -945,6 +1091,11 @@ namespace TE_Scripting
             //using System.IO;
             //using Newtonsoft.Json.Linq;
 
+            // 2025-10-22/B.Agullo
+            // This script copies column header formatting from one header to multiple other headers in a table visual.
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             // Step 1: Initialize report
             ReportExtended report = Rx.InitReport();
@@ -1048,30 +1199,9 @@ namespace TE_Scripting
         }
         
         
-        void testReportClass()
-        {
-            //using GeneralFunctions;
-            //using Report.DTO;
-            //using System.IO;
-            //using Newtonsoft.Json.Linq;
+        
+        
 
-            ReportExtended report = Rx.InitReport();
-            if (report == null)
-            {
-                Info("Operation cancelled or failed to load report.");
-                return;
-            }
-
-            VisualExtended visual = Rx.SelectVisual(report);
-            if (visual == null)
-            {
-                Info("No visual selected.");
-                return;
-            }
-
-            Rx.SaveVisual(visual);
-            Output("Visual saved to visual.json.");
-        }
         void createTextMeasures()
         {
             //using GeneralFunctions;
@@ -1081,6 +1211,10 @@ namespace TE_Scripting
             //This script creates text measures based on the selected measures in the model.
             //It prompts the user for a prefix and suffix to be added to the text measures.
             //It also allows the user to specify a suffix for the names of the new text measures.
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             if (Selected.Measures.Count() == 0)
             {
@@ -1139,6 +1273,11 @@ namespace TE_Scripting
             //using Report.DTO;
             //using GeneralFunctions;
 
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
+
             // Prompt user to select report
             var report = Rx.InitReport("Select PBIR file to clean up empty visual folders");
             if (report == null)
@@ -1193,7 +1332,10 @@ namespace TE_Scripting
             //2025-06-23/B.Agullo
             //this script adds a bilingual layer to the report, allowing the user to select the language of the report.
             //this will only prepare the report for an extraction of the definition as descrived in https://www.esbrina-ba.com/transforming-a-regular-report-into-a-bilingual-one-part-2-extracting-display-names-of-measures-and-field-prameters/
-            
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             ReportExtended report = Rx.InitReport();
             if (report == null) return;
@@ -1311,9 +1453,9 @@ namespace TE_Scripting
             // configure Roslyn compiler as explained here:
             // https://docs.tabulareditor.com/te2/Advanced-Scripting.html#compiling-with-roslyn
 
-            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
-            bool waitCursor = Application.UseWaitCursor;
-            Application.UseWaitCursor = false;
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
 
 
@@ -1483,9 +1625,6 @@ namespace TE_Scripting
 
             Output(String.Format(@"{0} Visuals copied to page '{1}' in target report.", visualsCount, ((PageExtended)targetPage).Page.DisplayName));
 
-            //comment this line in TE2
-            Application.UseWaitCursor = waitCursor;
-
         }
 
         void openVisualJsonFile()
@@ -1494,6 +1633,10 @@ namespace TE_Scripting
             //using Report.DTO;
             //using System.IO;
             //using Newtonsoft.Json.Linq;
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             //2025-05-25/B.Agullo
             //this script allows the user to open the JSON file of one or more visuals in the report.
@@ -1569,6 +1712,10 @@ namespace TE_Scripting
             //using Report.DTO;
             //using System.IO;
             //using Newtonsoft.Json.Linq;
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             ReportExtended report = Rx.InitReport();
             if (report == null) return;
@@ -1661,7 +1808,11 @@ namespace TE_Scripting
             //using Report.DTO;
             //using System.IO;
             //using Newtonsoft.Json.Linq;
-            
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
             ReportExtended report = Rx.InitReport();
             if (report == null) return;
 
@@ -1773,6 +1924,10 @@ namespace TE_Scripting
             //using Report.DTO;
             //using System.IO;
 
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
             ReportExtended report = Rx.InitReport();
             VisualExtended visual = Rx.SelectVisual(report);
 
@@ -1802,8 +1957,12 @@ namespace TE_Scripting
             
         void myNewScript()
         {
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
             //create a measure for each of the selected columns
-            foreach(Column c in Selected.Columns)
+            foreach (Column c in Selected.Columns)
             {
                 string mName = "Sum of " + c.Name;
                 string mExpression = String.Format("SUM({0})", c.DaxObjectFullName);
@@ -1822,12 +1981,14 @@ namespace TE_Scripting
             //using GeneralFunctions; 
 
             /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
-            //bool waitCursor = Application.UseWaitCursor;
-            //Application.UseWaitCursor = false;
-            
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
             Fx.CreateCalcTable(Model, "myMeasures", "{0}");
 
-            //Application.UseWaitCursor = waitCursor;
+      
         }
 
 
@@ -1838,16 +1999,14 @@ namespace TE_Scripting
             //#r "Microsoft.VisualBasic"
             //using Microsoft.VisualBasic;
 
-            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
-            //bool waitCursor = Application.UseWaitCursor;
-            //Application.UseWaitCursor = false;
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             string calcGroupName = Interaction.InputBox("Provide a name for your Calc Group", "Calc Group Name", "Time Intelligence", 740, 400);
             
             //sample code using the variable
             Output(calcGroupName);
-
-            //Application.UseWaitCursor = waitCursor;
 
         }
 
@@ -1856,17 +2015,15 @@ namespace TE_Scripting
 
             //using System.Windows.Forms;
 
-            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
-            //bool waitCursor = Application.UseWaitCursor;
-            //Application.UseWaitCursor = false;
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             DialogResult dialogResult = MessageBox.Show(text:"Generate Field Parameter?", caption:"Field Parameter", buttons:MessageBoxButtons.YesNo);
             bool generateFieldParameter = (dialogResult == DialogResult.Yes);
             
             //sample code using the variable
             Output(generateFieldParameter);
-
-            //Application.UseWaitCursor = waitCursor;
 
         }
 
@@ -1875,10 +2032,9 @@ namespace TE_Scripting
 
             //using System.Windows.Forms;
 
-            /*uncomment in TE3 to avoid wating cursor infront of dialogs*/
-            //bool waitCursor = Application.UseWaitCursor;
-            //Application.UseWaitCursor = false;
-
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             List<string> sampleList = new List<string>();
 
@@ -1928,7 +2084,6 @@ namespace TE_Scripting
             //code using "select" variable
             Output(select);
 
-            //Application.UseWaitCursor = waitCursor;
         }
         public static void sayHelloWorld()
         {
@@ -1998,6 +2153,11 @@ namespace TE_Scripting
             SyntaxTree tree = CSharpSyntaxTree.ParseText(File.ReadAllText(macroFilePath));
 
             List<string> macroNames = new List<string>();
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
 
             //extract method names that are not public static (just macro names) 
             macroNames = tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>()
@@ -2184,7 +2344,7 @@ namespace TE_Scripting
                             //insert in the code right before the first one
                             previousCode = previousCode.Substring(0, Math.Max(hashrFirstMacroCode - 1, 0))
                                 + hashrLine.Trim() + Environment.NewLine
-                                + previousCode.Substring(hashrFirstMacroCode);
+                                + previousCode.Substring(Math.Max(hashrFirstMacroCode,0));
 
                             //update the position of the first #r
                             hashrFirstMacroCode = previousCode.IndexOf("#r");

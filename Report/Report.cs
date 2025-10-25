@@ -466,7 +466,7 @@ namespace Report.DTO
             public int? Order { get; set; }
 
             [JsonProperty("data")]
-            public List<object> Data { get; set; }
+            public List<DataObject> Data { get; set; }
 
             [JsonProperty("metadata")]
             public string Metadata { get; set; }
@@ -478,6 +478,21 @@ namespace Report.DTO
             public Dictionary<string, JToken> ExtensionData { get; set; }
         }
 
+        public class DataObject
+        {
+            [JsonProperty("dataViewWildcard")]
+            public DataViewWildcard DataViewWildcard { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
+
+        public class DataViewWildcard
+        {
+            [JsonProperty("matchingOption")]
+            public int MatchingOption { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JToken> ExtensionData { get; set; }
+        }
 
         public class FilterConfig
         {
