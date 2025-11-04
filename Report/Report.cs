@@ -207,6 +207,8 @@ namespace Report.DTO
             [JsonProperty("field")] public VisualDto.Field Field { get; set; }
             [JsonProperty("queryRef")] public string QueryRef { get; set; }
             [JsonProperty("nativeQueryRef")] public string NativeQueryRef { get; set; }
+
+            [JsonProperty("displayName")] public string DisplayName { get; set; }
             [JsonProperty("active")] public bool? Active { get; set; }
             [JsonProperty("hidden")] public bool? Hidden { get; set; }
             [JsonExtensionData]
@@ -1347,21 +1349,6 @@ namespace Report.DTO
                 }
             }
 
-            //if (Content.FilterConfig != null)
-            //{
-            //    var filterConfigString = Content.FilterConfig.ToString();
-            //    string table = isMeasure ? newField.Measure.Expression.SourceRef.Entity : newField.Column.Expression.SourceRef.Entity;
-            //    string prop = isMeasure ? newField.Measure.Property : newField.Column.Property;
-
-            //    string oldPattern = oldFieldKey;
-            //    string newPattern = $"'{table}'[{prop}]";
-
-            //    if (filterConfigString.Contains(oldPattern))
-            //    {
-            //        Content.FilterConfig = filterConfigString.Replace(oldPattern, newPattern);
-            //        wasModified = true;
-            //    }
-            //}
             if (wasModified && modifiedSet != null)
                 modifiedSet.Add(this);
         }

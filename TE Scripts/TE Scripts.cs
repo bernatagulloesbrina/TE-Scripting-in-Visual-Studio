@@ -31,6 +31,324 @@ namespace TE_Scripting
     public class TE_Scripts
     {
 
+
+        void applyDisplayNames()
+        {
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+
+            // 2025-10-31 / B.Agullo
+            // Initializes a report, lets user select visuals, iterates through projections,
+            // and applies DisplayName annotations from the model to the projections in the report.
+
+#if TE3
+    ScriptHelper.WaitFormVisible = false;
+#endif
+
+            // Step 1: Initialize report
+            ReportExtended report = Rx.InitReport();
+            if (report == null) return;
+
+            // Step 2: Let user select visuals
+            IList<VisualExtended> selectedVisuals = Rx.SelectVisuals(report);
+            if (selectedVisuals == null || selectedVisuals.Count == 0)
+            {
+                Info("No visuals selected.");
+                return;
+            }
+
+            int updatedCount = 0;
+            int visualsUpdated = 0; 
+
+            // Step 3: Process each selected visual
+            foreach (var visual in selectedVisuals)
+            {
+                var queryState = visual.Content?.Visual?.Query?.QueryState;
+                if (queryState == null) continue;
+
+                // Create list of all projection sets to iterate
+                var projectionSets = new List<VisualDto.ProjectionsSet>
+                {
+                    queryState.Values,
+                    queryState.Y,
+                    queryState.Y2,
+                    queryState.Category,
+                    queryState.Series,
+                    queryState.Data,
+                    queryState.Rows
+                };
+
+                bool visualModified = false;
+
+                // Iterate through each projection set
+                foreach (var projectionSet in projectionSets)
+                {
+                    if (projectionSet?.Projections == null) continue;
+
+                    foreach (var projection in projectionSet.Projections)
+                    {
+                        if (projection?.Field == null) continue;
+
+                        string displayNameFromModel = null;
+
+                        // Check if it's a measure
+                        if (projection.Field.Measure != null)
+                        {
+                            var measureExpr = projection.Field.Measure;
+                            if (measureExpr.Expression?.SourceRef?.Entity != null && measureExpr.Property != null)
+                            {
+                                string fullName = String.Format("'{0}'[{1}]", measureExpr.Expression.SourceRef.Entity, measureExpr.Property);
+                                var measure = Model.AllMeasures.FirstOrDefault(m => m.Table.DaxObjectFullName + m.DaxObjectFullName == fullName);
+
+                                if (measure != null)
+                                {
+                                    displayNameFromModel = measure.GetAnnotation("DisplayName");
+                                }
+                            }
+                        }
+                        // Check if it's a column
+                        else if (projection.Field.Column != null)
+                        {
+                            var columnExpr = projection.Field.Column;
+                            if (columnExpr.Expression?.SourceRef?.Entity != null && columnExpr.Property != null)
+                            {
+                                string fullName = String.Format("'{0}'[{1}]", columnExpr.Expression.SourceRef.Entity, columnExpr.Property);
+                                var column = Model.AllColumns.FirstOrDefault(c => c.DaxObjectFullName == fullName);
+
+                                if (column != null)
+                                {
+                                    displayNameFromModel = column.GetAnnotation("DisplayName");
+                                }
+                            }
+                        }
+
+                        // Apply display name if found in model
+                        if (!string.IsNullOrEmpty(displayNameFromModel))
+                        {
+                            // Check if projection already has a display name
+                            if (string.IsNullOrEmpty(projection.DisplayName) || projection.DisplayName != displayNameFromModel)
+                            {
+                                projection.DisplayName = displayNameFromModel;
+                                updatedCount++;
+                                visualModified = true;
+                            }
+                        }
+                    }
+                }
+
+                // Save visual if it was modified
+                if (visualModified)
+                {
+                    Rx.SaveVisual(visual);
+                    visualsUpdated++;
+                }
+            }
+
+            Output(String.Format("Updated {0} display names in {1} visuals of the report.", updatedCount, visualsUpdated));
+        }
+
+        void storeDisplayNames()
+        {
+            //using GeneralFunctions;
+            //using Report.DTO;
+            //using System.IO;
+            //using Newtonsoft.Json.Linq;
+
+            // 2025-10-30 / B.Agullo
+            // Initializes a report, lets user select visuals, iterates through projections to extract display names,
+            // and stores them as "DisplayName" annotations in the model. Handles multiple display names by prompting user.
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
+            // Step 1: Initialize report
+            ReportExtended report = Rx.InitReport();
+            if (report == null) return;
+
+            // Step 2: Let user select visuals
+            IList<VisualExtended> selectedVisuals = Rx.SelectVisuals(report);
+            if (selectedVisuals == null || selectedVisuals.Count == 0)
+            {
+                Info("No visuals selected.");
+                return;
+            }
+
+            // Step 3: Collect display names from selected visuals
+            var measureDisplayNamesDict = new Dictionary<string, HashSet<string>>();
+            var columnDisplayNamesDict = new Dictionary<string, HashSet<string>>();
+
+            foreach (var visual in selectedVisuals)
+            {
+                var queryState = visual.Content?.Visual?.Query?.QueryState;
+                if (queryState == null) continue;
+
+                // Create list of all projection sets to iterate
+                var projectionSets = new List<VisualDto.ProjectionsSet>
+                {
+                    queryState.Values,
+                    queryState.Y,
+                    queryState.Y2,
+                    queryState.Category,
+                    queryState.Series,
+                    queryState.Data,
+                    queryState.Rows
+                };
+
+                // Iterate through each projection set
+                foreach (var projectionSet in projectionSets)
+                {
+                    if (projectionSet?.Projections == null) continue;
+
+                    foreach (var projection in projectionSet.Projections)
+                    {
+                        if (projection?.Field == null) continue;
+
+                        string displayName = projection.DisplayName;
+
+                        if (string.IsNullOrEmpty(displayName)) continue;
+
+                        // Check if it's a measure
+                        if (projection.Field.Measure != null)
+                        {
+                            var measureExpr = projection.Field.Measure;
+                            if (measureExpr.Expression?.SourceRef?.Entity != null && measureExpr.Property != null)
+                            {
+                                string fullName = String.Format("'{0}'[{1}]", measureExpr.Expression.SourceRef.Entity, measureExpr.Property);
+
+                                if (!measureDisplayNamesDict.ContainsKey(fullName))
+                                {
+                                    measureDisplayNamesDict[fullName] = new HashSet<string>();
+                                }
+
+                                // Only add if it's different from the default field name
+                                if (displayName != measureExpr.Property)
+                                {
+                                    measureDisplayNamesDict[fullName].Add(displayName);
+                                }
+                                else if (measureDisplayNamesDict[fullName].Count == 0)
+                                {
+                                    // If no custom display name yet, use the property name
+                                    measureDisplayNamesDict[fullName].Add(measureExpr.Property);
+                                }
+                            }
+                        }
+                        // Check if it's a column
+                        else if (projection.Field.Column != null)
+                        {
+                            var columnExpr = projection.Field.Column;
+                            if (columnExpr.Expression?.SourceRef?.Entity != null && columnExpr.Property != null)
+                            {
+                                string fullName = String.Format("'{0}'[{1}]", columnExpr.Expression.SourceRef.Entity, columnExpr.Property);
+
+                                if (!columnDisplayNamesDict.ContainsKey(fullName))
+                                {
+                                    columnDisplayNamesDict[fullName] = new HashSet<string>();
+                                }
+
+                                // Only add if it's different from the default field name
+                                if (displayName != columnExpr.Property && displayName != fullName)
+                                {
+                                    columnDisplayNamesDict[fullName].Add(displayName);
+                                }
+                                
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Step 4: Resolve conflicts (multiple display names for same field)
+            var measureDisplayNames = new Dictionary<string, string>();
+            var columnDisplayNames = new Dictionary<string, string>();
+
+            foreach (var kvp in measureDisplayNamesDict)
+            {
+                string fieldKey = kvp.Key;
+                var displayNames = kvp.Value.ToList();
+
+                if (displayNames.Count == 0) continue;
+
+                if (displayNames.Count == 1)
+                {
+                    measureDisplayNames[fieldKey] = displayNames[0];
+                }
+                else
+                {
+                    // Multiple display names found - ask user
+                    string chosen = Fx.ChooseString(
+                        OptionList: displayNames,
+                        label: String.Format("Multiple display names found for measure '{0}'. Choose one:", fieldKey)
+                    );
+                    if (string.IsNullOrEmpty(chosen))
+                    {
+                        Info("Operation cancelled.");
+                        return;
+                    }
+                    measureDisplayNames[fieldKey] = chosen;
+                }
+            }
+
+            foreach (var kvp in columnDisplayNamesDict)
+            {
+                string fieldKey = kvp.Key;
+                var displayNames = kvp.Value.ToList();
+
+                if (displayNames.Count == 0) continue;
+
+                if (displayNames.Count == 1)
+                {
+                    columnDisplayNames[fieldKey] = displayNames[0];
+                }
+                else
+                {
+                    // Multiple display names found - ask user
+                    string chosen = Fx.ChooseString(
+                        OptionList: displayNames,
+                        label: String.Format("Multiple display names found for column '{0}'. Choose one:", fieldKey)
+                    );
+                    if (string.IsNullOrEmpty(chosen))
+                    {
+                        Info("Operation cancelled.");
+                        return;
+                    }
+                    columnDisplayNames[fieldKey] = chosen;
+                }
+            }
+
+            // Step 5: Apply annotations to model
+            int measuresUpdated = 0;
+            int columnsUpdated = 0;
+
+            foreach (var kvp in measureDisplayNames)
+            {
+                var measure = Model.AllMeasures.FirstOrDefault(m => m.Table.DaxObjectFullName + m.DaxObjectFullName == kvp.Key);
+                if (measure != null)
+                {
+                    if (measure.GetAnnotation("DisplayName") == kvp.Value) continue;
+                    
+                    measure.SetAnnotation("DisplayName", kvp.Value);
+                    measuresUpdated++;
+                }
+            }
+
+            foreach (var kvp in columnDisplayNames)
+            {
+                var column = Model.AllColumns.FirstOrDefault(c => c.DaxObjectFullName == kvp.Key);
+                if (column != null)
+                {
+                    if(column.GetAnnotation("DisplayName") == kvp.Value) continue;
+                    column.SetAnnotation("DisplayName", kvp.Value);
+                    columnsUpdated++;
+                }
+            }
+
+            Output(String.Format("Updated {0} measures and {1} columns with DisplayName annotations.", measuresUpdated, columnsUpdated));
+        }
+
+
         void copyConditionalFormatting()
         {
 
@@ -569,7 +887,7 @@ namespace TE_Scripting
 
             Rx.SaveVisual(selectedVisual);
             Info("Visual on page '" 
-                + selectedVisual.ParentPage.Page.Name 
+                + selectedVisual.ParentPage.Page.DisplayName 
                 + "' has been modified. Close and reopen the report to see the changes"); 
 
         }
@@ -1021,6 +1339,7 @@ namespace TE_Scripting
                 {
                     for (int i = 0; i < currentDestinations.Count; i++)
                     {
+
                         //transform to actual tables, initialize if necessary
                         Table destinationTable = Model.Tables.Where(
                             t => t.DaxObjectFullName == currentDestinations[i])
@@ -1695,7 +2014,12 @@ namespace TE_Scripting
                         Error(String.Format(@"JSON file not found: {0}", jsonPath));
                         continue;
                     }
-                    System.Diagnostics.Process.Start(jsonPath);
+                    var psi = new System.Diagnostics.ProcessStartInfo()
+                    {
+                        FileName = jsonPath,
+                        UseShellExecute = true  // This is the crucial part
+                    };
+                    System.Diagnostics.Process.Start(psi);
                 }
             }
         }
@@ -2069,8 +2393,6 @@ namespace TE_Scripting
                 return listbox.SelectedItem.ToString();
             };
 
-            
-
             //let the user select the name of the macro to copy
             String select = SelectString(sampleList, "Choose a macro");
 
@@ -2370,8 +2692,10 @@ namespace TE_Scripting
 
                         string[] usingLines = codeToAppend.Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass).Split('\n');
 
+
                         foreach (String usingLine in usingLines)
                         {
+
                             //if using directive not present
                             if (!previousCode.Contains(usingLine))
                             {
