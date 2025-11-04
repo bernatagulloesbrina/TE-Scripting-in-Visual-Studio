@@ -8,5 +8,6 @@
       <HintPath>$(LocalAppDataPath)</HintPath>
       <Private>false</Private>
     </Reference>
+
   </ItemGroup>
 </Project>

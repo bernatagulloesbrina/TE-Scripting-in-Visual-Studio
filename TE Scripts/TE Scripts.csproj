@@ -29,7 +29,8 @@
   <ItemGroup>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="TabularEditor">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
+      <HintPath>C:\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
+      <Private>false</Private>
     </Reference>
   </ItemGroup>
 
