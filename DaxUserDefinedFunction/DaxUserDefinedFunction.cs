@@ -45,7 +45,7 @@ namespace DaxUserDefinedFunction
                 //var parts = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
                 var fp = new FunctionParameter();
-                fp.Name = nameParams.Length > 0 ? nameParams[0] : param;
+                fp.Name = nameParams.Length > 0 ? nameParams[0].Trim() : param.Trim();
                 fp.Type =
                     (nameParams.Length == 1) ? "ANYVAL" :
                     (nameParams.Length > 1) ?

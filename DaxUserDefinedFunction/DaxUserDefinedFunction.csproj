@@ -10,13 +10,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="TabularEditor">
-      <HintPath>$(ProgramFiles(x86))\Tabular Editor\TabularEditor.exe</HintPath>
-    </Reference>
+    <ProjectReference Include="$(SolutionDir)GeneralFunctions\GeneralFunctions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="$(SolutionDir)GeneralFunctions\GeneralFunctions.csproj" />
+    <Reference Include="TabularEditor">
+      <HintPath>C:\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
+    </Reference>
   </ItemGroup>
 
   <Import Project="$(MSBuildProjectDirectory)\..\TE.References.props" />
