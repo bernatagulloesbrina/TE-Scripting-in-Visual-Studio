@@ -97,14 +97,22 @@ namespace TE_Scripting
                         if (projection.Field.Measure != null)
                         {
                             var measureExpr = projection.Field.Measure;
-                            if (measureExpr.Expression?.SourceRef?.Entity != null && measureExpr.Property != null)
+                            if (measureExpr.Expression?.SourceRef?.Entity != null 
+                                && measureExpr.Property != null)
                             {
-                                string fullName = String.Format("'{0}'[{1}]", measureExpr.Expression.SourceRef.Entity, measureExpr.Property);
-                                var measure = Model.AllMeasures.FirstOrDefault(m => m.Table.DaxObjectFullName + m.DaxObjectFullName == fullName);
+                                string fullName = String.Format(
+                                    "'{0}'[{1}]", 
+                                    measureExpr.Expression.SourceRef.Entity, 
+                                    measureExpr.Property);
+                                
+                                var measure = Model.AllMeasures.FirstOrDefault(
+                                    m => m.Table.DaxObjectFullName 
+                                        + m.DaxObjectFullName == fullName);
 
                                 if (measure != null)
                                 {
-                                    displayNameFromModel = measure.GetAnnotation("DisplayName");
+                                    displayNameFromModel = 
+                                        measure.GetAnnotation("DisplayName");
                                 }
                             }
                         }
@@ -128,7 +136,8 @@ namespace TE_Scripting
                         if (!string.IsNullOrEmpty(displayNameFromModel))
                         {
                             // Check if projection already has a display name
-                            if (string.IsNullOrEmpty(projection.DisplayName) || projection.DisplayName != displayNameFromModel)
+                            if (string.IsNullOrEmpty(projection.DisplayName) 
+                                || projection.DisplayName != displayNameFromModel)
                             {
                                 projection.DisplayName = displayNameFromModel;
                                 updatedCount++;
@@ -324,7 +333,8 @@ namespace TE_Scripting
 
             foreach (var kvp in measureDisplayNames)
             {
-                var measure = Model.AllMeasures.FirstOrDefault(m => m.Table.DaxObjectFullName + m.DaxObjectFullName == kvp.Key);
+                var measure = Model.AllMeasures.FirstOrDefault(
+                    m => m.Table.DaxObjectFullName + m.DaxObjectFullName == kvp.Key);
                 if (measure != null)
                 {
                     if (measure.GetAnnotation("DisplayName") == kvp.Value) continue;
