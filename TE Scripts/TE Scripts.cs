@@ -30,8 +30,125 @@ namespace TE_Scripting
 {
     public class TE_Scripts
     {
+        void test()
+        {
+            //using GeneralFunctions;
+
+            // 2025-11-05 / B.Agullo
+            // Identifies fact table, date table, product table and key columns, then creates a function
+            // to compute metrics for best products based on these relationships.
+
+#if TE3
+    ScriptHelper.WaitFormVisible = false;
+#endif
+
+            // Check model compatibility for functions
+            Fx.CheckCompatibilityVersion(Model, 1702);
+            if (Model.Database.CompatibilityLevel < 1702) return;
+
+            // Step 1: Identify Fact Table
+            Table factTable = Fx.GetFactTable(model: Model);
+            if (factTable == null) return;
+
+            // Step 2: Identify Date Table and Year Column
+            Table dateTable = Fx.GetDateTable(model: Model);
+            if (dateTable == null) return;
 
 
+
+            // Find year column in date table
+            Column yearColumn = dateTable.Columns.FirstOrDefault(c =>
+                c.Name.ToUpper().Contains("YEAR") &&
+                c.DataType == DataType.Int64);
+
+            if (yearColumn == null)
+            {
+                yearColumn = SelectColumn(
+                    table: dateTable,
+                    label: "Select the Year column from the date table");
+                if (yearColumn == null) return;
+            }
+
+            // Step 3: Identify Product Table
+            Table productTable = SelectTable(
+                label: "Select the Product table");
+            if (productTable == null) return;
+
+            // Step 4: Identify Product Key Column
+            Column productKeyColumn = SelectColumn(
+                table: productTable,
+                label: "Select the Product Key column");
+            if (productKeyColumn == null) return;
+
+            // Step 5: Create the function name and expression
+            string functionName = "Local.ComputeForBestProds";
+            functionName = Fx.GetNameFromUser(
+                Prompt: "Enter the function name:",
+                Title: "Function Name",
+                DefaultResponse: functionName);
+            if (functionName == null) return;
+
+            string functionExpression = String.Format(
+                @"( computeMeasure: EXPR, sortMeasure : EXPR ) =>
+                VAR NumOfTop = 10
+                VAR Coverage = 0.8
+                VAR Years =
+                    CALCULATETABLE (
+                        SUMMARIZE ( {0}, {1} ),
+                        ALLSELECTED ( )
+                    )
+                VAR NumOfYears =
+                    COUNTROWS ( Years )
+                VAR YearsAndTop10 =
+                    CALCULATETABLE (
+                        GENERATE (
+                            Years,
+                            TOPN ( NumOfTop, VALUES ( {2} ), CALCULATE ( sortMeasure ) )
+                        ),
+                        ALLSELECTED ()
+                    )
+                VAR ProdsAndCount =
+                    GROUPBY (
+                        YearsAndTop10,
+                        {2},
+                        ""NumOfYears"", SUMX ( CURRENTGROUP (), 1 )
+                    )
+                VAR MinYears = NumOfYears * Coverage
+                VAR BestProds =
+                    FILTER ( ProdsAndCount, [NumOfYears] >= MinYears )
+                VAR Result = CALCULATE ( computeMeasure, KEEPFILTERS ( BestProds ) )
+                RETURN
+                    Result",
+                factTable.DaxObjectFullName,
+                yearColumn.DaxObjectFullName,
+                productKeyColumn.DaxObjectFullName);
+
+            // Step 6: Create the function
+            Function newFunction = Model.AddFunction(functionName);
+            newFunction.Expression = functionExpression;
+            newFunction.FormatDax();
+
+            // Add annotations
+
+            newFunction.SetAnnotation("outputType", "Measure");
+            newFunction.SetAnnotation("nameTemplate", "computeMeasureName - Top N Products");
+            newFunction.SetAnnotation("outputDestination", "computeMeasureTable");
+            newFunction.SetAnnotation("displayFolder", @"computeMeasureDisplayFolder\computeMeasureName Calculations");
+            newFunction.SetAnnotation("formatString", "computeMeasureFormatStringFull");
+
+            Info(String.Format(
+                @"Function '{0}' created successfully.
+Fact Table: {1}
+Date Table: {2} (Year: {3})
+Product Table: {4} (Key: {5})",
+                functionName,
+                factTable.Name,
+                dateTable.Name,
+                yearColumn.Name,
+                productTable.Name,
+                productKeyColumn.Name));
+        }
+        
         void applyDisplayNames()
         {
             //using GeneralFunctions;
@@ -2710,7 +2827,7 @@ namespace TE_Scripting
                             if (!previousCode.Contains(usingLine))
                             {
                                 //insert in the code right before the first one
-                                previousCode = previousCode.Substring(0, Math.Max(usingFirstMacroCode - 1, 0))
+                                previousCode = previousCode.Substring(0, Math.Max(usingFirstMacroCode, 0))
                                     + Environment.NewLine + usingLine.Trim() + Environment.NewLine
                                     + previousCode.Substring(usingFirstMacroCode);
 
