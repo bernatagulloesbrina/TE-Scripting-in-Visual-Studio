@@ -1,4 +1,5 @@
-﻿using GeneralFunctions; 
+﻿using GeneralFunctions;
+using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -77,7 +78,10 @@ namespace DaxUserDefinedFunction
                     paramMode = "VAL";
                 else if (trimmed.IndexOf("EXPR", StringComparison.OrdinalIgnoreCase) >= 0)
                     paramMode = "EXPR";
-                else
+                else if (fp.Type == "ANYREF")
+                {
+                    paramMode = "EXPR";
+                }else
                     paramMode = "VAL";
                 fp.ParameterMode = paramMode;
 
@@ -89,7 +93,7 @@ namespace DaxUserDefinedFunction
 
         
 
-        public static FunctionExtended CreateFunctionExtended(Function function)
+        public static FunctionExtended CreateFunctionExtended(Function function, bool completeMetadata = true)
         {
 
             FunctionExtended emptyFunction = null as FunctionExtended;
@@ -158,62 +162,64 @@ namespace DaxUserDefinedFunction
             string myDisplayFolder = function.GetAnnotation("displayFolder");
             string myOutputDestination = function.GetAnnotation("outputDestination");
 
-            if (string.IsNullOrEmpty(myOutputType))
+            if (completeMetadata)
             {
-                IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "None" };
-                myOutputType = 
-                    Fx.ChooseString(
-                        OptionList: selectionTypeOptions, 
-                        label: "Choose output type for function" + function.Name, 
-                        customWidth: 600);
-                if (string.IsNullOrEmpty(myOutputType)) return emptyFunction;
-                function.SetAnnotation("outputType", myOutputType);
-            }
-
-            if (string.IsNullOrEmpty(myNameTemplate))
-            {
-                myNameTemplate = Fx.GetNameFromUser(Prompt:"Enter output name template for function " + function.Name,  "Name Template", nameTemplateDefault);
-                if (string.IsNullOrEmpty(myNameTemplate)) return emptyFunction;
-                function.SetAnnotation("nameTemplate", myNameTemplate);
-            }
-            if(string.IsNullOrEmpty(myFormatString))
-            {
-                myFormatString = Fx.GetNameFromUser(Prompt: "Enter output format string for function " + function.Name, "Format String", formatStringDefault);
-                if (string.IsNullOrEmpty(myFormatString)) return emptyFunction;
-                function.SetAnnotation("formatString", myFormatString);
-
-            }
-            if(string.IsNullOrEmpty(myDisplayFolder))
-            {
-                myDisplayFolder = 
-                    Fx.GetNameFromUser(
-                        Prompt: "Enter output display folder for function " + function.Name, 
-                        Title:"Display Folder", 
-                        DefaultResponse: displayFolderDefault);
-
-                if (string.IsNullOrEmpty(myDisplayFolder)) return emptyFunction;
-                function.SetAnnotation("displayFolder", myDisplayFolder);
-            }
-
-            if (string.IsNullOrEmpty(myOutputDestination))
-            {
-                if(myOutputType ==  "Table")
+                if (string.IsNullOrEmpty(myOutputType))
                 {
-                    myOutputDestination = "Model";
+                    IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "None" };
+                    myOutputType =
+                        Fx.ChooseString(
+                            OptionList: selectionTypeOptions,
+                            label: "Choose output type for function" + function.Name,
+                            customWidth: 600);
+                    if (string.IsNullOrEmpty(myOutputType)) return emptyFunction;
+                    function.SetAnnotation("outputType", myOutputType);
                 }
-                else if(myOutputType == "Column" ||  myOutputType == "Measure")
+
+                if (string.IsNullOrEmpty(myNameTemplate))
                 {
-                    myOutputDestination = 
+                    myNameTemplate = Fx.GetNameFromUser(Prompt: "Enter output name template for function " + function.Name, "Name Template", nameTemplateDefault);
+                    if (string.IsNullOrEmpty(myNameTemplate)) return emptyFunction;
+                    function.SetAnnotation("nameTemplate", myNameTemplate);
+                }
+                if (string.IsNullOrEmpty(myFormatString))
+                {
+                    myFormatString = Fx.GetNameFromUser(Prompt: "Enter output format string for function " + function.Name, "Format String", formatStringDefault);
+                    if (string.IsNullOrEmpty(myFormatString)) return emptyFunction;
+                    function.SetAnnotation("formatString", myFormatString);
+
+                }
+                if (string.IsNullOrEmpty(myDisplayFolder))
+                {
+                    myDisplayFolder =
                         Fx.GetNameFromUser(
-                            Prompt: "Enter Destination template for " + function.Name, 
-                            Title:"Destination", 
-                            DefaultResponse: destinationDefault);
+                            Prompt: "Enter output display folder for function " + function.Name,
+                            Title: "Display Folder",
+                            DefaultResponse: displayFolderDefault);
 
-                    if(string.IsNullOrEmpty(myOutputDestination)) return emptyFunction;
-                    function.SetAnnotation("outputDestination", destinationDefault);
+                    if (string.IsNullOrEmpty(myDisplayFolder)) return emptyFunction;
+                    function.SetAnnotation("displayFolder", myDisplayFolder);
+                }
+
+                if (string.IsNullOrEmpty(myOutputDestination))
+                {
+                    if (myOutputType == "Table")
+                    {
+                        myOutputDestination = "Model";
+                    }
+                    else if (myOutputType == "Column" || myOutputType == "Measure")
+                    {
+                        myOutputDestination =
+                            Fx.GetNameFromUser(
+                                Prompt: "Enter Destination template for " + function.Name,
+                                Title: "Destination",
+                                DefaultResponse: destinationDefault);
+
+                        if (string.IsNullOrEmpty(myOutputDestination)) return emptyFunction;
+                        function.SetAnnotation("outputDestination", destinationDefault);
+                    }
                 }
             }
-
 
             var functionExtended = new FunctionExtended
             {

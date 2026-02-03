@@ -14,10 +14,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Dax.Analyzer\Dax.Analyzer.csproj" />
     <ProjectReference Include="..\DaxUserDefinedFunction\DaxUserDefinedFunction.csproj" />
     <ProjectReference Include="..\ReportFunctions\ReportFunctions.csproj" />
     <ProjectReference Include="..\Report\Report.csproj" />
     <ProjectReference Include="..\GeneralFunctions\GeneralFunctions.csproj" />
+    <PackageReference Include="Dax.Formatter" Version="1.2.0" />
 
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.Collections.Immutable" Version="7.0.0" />

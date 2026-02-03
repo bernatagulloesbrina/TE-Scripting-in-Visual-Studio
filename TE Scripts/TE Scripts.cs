@@ -1,13 +1,18 @@
-﻿using DaxUserDefinedFunction;
+﻿using Dax.Formatter;
+using Dax.Formatter.Models;
+using DaxUserDefinedFunction;
 using GeneralFunctions; //Uncomment if you use the custom class, add reference to the project too.
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.VisualBasic;
+using Newtonsoft.Json.Linq;
 using Report.DTO;
 using ReportFunctions;
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
+using System.Data.SqlTypes;
 using System.IO;
 using System.Linq;
 using System.Reflection.Emit;
@@ -15,11 +20,13 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using TabularEditor;
 using TabularEditor.Scripting;
+using TabularEditor.TextServices;
 using TabularEditor.TOMWrapper;
+using TabularEditor.TOMWrapper.Utils;
 using TabularEditor.UI;
+using static DaxTokenizer; 
 using static Report.DTO.VisualDto;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
-
 
 
 // '2023-05-06 / B.Agullo / 
@@ -32,6 +39,820 @@ namespace TE_Scripting
     {
 
 
+        void applyCalcGroupsFormatExpression()
+        {
+            //this script only executes in TE3
+
+            //using Dax.Analyzer;
+            //using Dax.Formatter; 
+            //using System.IO;
+
+            //using GeneralFunctions; 
+
+#if TE3
+    ScriptHelper.WaitFormVisible = false;
+#endif
+
+            Measure targetMeasure = Fx.GetSelectedMeasure(Selected.Measures);
+            if (targetMeasure == null) return;
+
+            var selectedItems = Fx.SelectCalculationItems(Model, "Select one calculation item per group");
+            if (selectedItems == null || selectedItems.Count == 0) return;
+
+            // Get only calculation groups that have selected items, ordered by precedence (descending)
+            var calcGroupsByPrecedence = Model.Tables
+                .OfType<CalculationGroupTable>()
+                .Where(cg => selectedItems.ContainsKey(cg.Name))
+                .OrderByDescending(cg => cg.CalculationGroup.Precedence)
+                .ToList();
+
+
+            string previousFormatExpression = @"SELECTEDMEASUREFORMATSTRING()";
+            string currentFormatExpression = @"";
+
+            foreach (var calcGroup in calcGroupsByPrecedence)
+            {
+                string selectedItemName = selectedItems[calcGroup.Name];
+                //Output($"Calc Group: {calcGroup.Name}, Precedence: {calcGroup.CalculationGroup.Precedence}, Selected Item: {selectedItemName}");
+
+                // Get the actual calculation item object
+                var calcItem = calcGroup.CalculationItems.FirstOrDefault(ci => ci.Name == selectedItemName);
+                if (calcItem == null) { Error(String.Format("Calc Item {0} not found", selectedItemName)); return; }
+
+                var calcItemFormatTokens = DaxTokenizer.Tokenize(calcItem.FormatStringExpression);
+
+                string calcItemFormatReplaceExpression = String.Format(@"/*{0} - {1}*/" + Environment.NewLine,calcGroup.Name, calcItem.Name); 
+                bool closeParenthesisFound = true;
+                bool isSelectedMeasureArgs = false;
+                //{0} SELECTEDMEASURE
+                //{1} SELECTEDMEASURENAME
+                //{2} SELECTEDMEASUREFORMATSTRING
+                foreach (var calcItemFormatToken in calcItemFormatTokens)
+                {
+                    if (!closeParenthesisFound)
+                    {
+                        if (calcItemFormatToken.Type == DaxToken.CLOSE_PARENS)
+                        {
+                            closeParenthesisFound = true;
+                        }
+                        if (isSelectedMeasureArgs)
+                        {
+                            if (calcItemFormatToken.Type == DaxToken.CLOSE_PARENS)
+                            {
+                                calcItemFormatReplaceExpression += "}}";
+                                isSelectedMeasureArgs = false;
+
+                            }
+                            else if (calcItemFormatToken.Type == DaxToken.COLUMN_OR_MEASURE)
+                            {
+                                calcItemFormatReplaceExpression += @"""" + calcItemFormatToken.Text + @"""";
+
+                            }
+                            else if (calcItemFormatToken.Type == DaxToken.COMMA)
+                            {
+                                calcItemFormatReplaceExpression += calcItemFormatToken.Text;
+                            }
+
+                        }
+
+
+                    }
+                    else if (calcItemFormatToken.Type == DaxToken.TABLE)
+                    {
+                        calcItemFormatReplaceExpression += "'" + calcItemFormatToken.Text + "'";
+
+                    }
+                    else if (calcItemFormatToken.Type == DaxToken.COLUMN_OR_MEASURE)
+                    {
+                        calcItemFormatReplaceExpression += "[" + calcItemFormatToken.Text + "]";
+                    }
+                    else if (calcItemFormatToken.Type == DaxToken.SELECTEDMEASURE)
+                    {
+                        calcItemFormatReplaceExpression += "{0}";
+                        closeParenthesisFound = false;
+
+                    }
+                    else if (calcItemFormatToken.Type == DaxToken.ISSELECTEDMEASURE)
+                    {
+                        calcItemFormatReplaceExpression += @"""{1}"" IN {{";
+                        isSelectedMeasureArgs = true;
+                        closeParenthesisFound = false;
+
+                    }
+                    else if (calcItemFormatToken.Type == DaxToken.SELECTEDMEASURENAME)
+                    {
+                        calcItemFormatReplaceExpression += @"""{1}""";
+                        closeParenthesisFound = false;
+
+                    }
+                    //selectedmeasureformatstring should stay as is in format expression
+                    //else if (calcItemFormatToken.Type == DaxToken.SELECTEDMEASUREFORMATSTRING)
+                    //{
+                    //    calcItemFormatReplaceExpression += @"{2}";
+                    //    closeParenthesisFound = false;
+                    //}
+                    else if (calcItemFormatToken.Type == DaxToken.STRING_LITERAL)
+                    {
+                        calcItemFormatReplaceExpression += @"""" + calcItemFormatToken.Text + @"""";
+                    }
+                    else
+                    {
+                        calcItemFormatReplaceExpression += calcItemFormatToken.Text;
+                    }
+
+                }
+
+                
+                
+
+
+
+                var expressionFormatTokens = DaxTokenizer.Tokenize(previousFormatExpression);
+                
+                currentFormatExpression = "";
+                bool closeParenthesisFound2 = true;
+                bool isColumn = false;
+
+                foreach (var token in expressionFormatTokens)
+                {
+                    
+                    // Check if previous token indicated this is a column
+                    if (!closeParenthesisFound2)
+                    {
+                        //'do nothing'
+                        if (token.Type == DaxToken.CLOSE_PARENS)
+                        {
+                            closeParenthesisFound2 = true;
+                        }
+
+                    } else if (isColumn)
+                    {
+                        currentFormatExpression += "[" + token.Text + "]";
+                        isColumn = false;
+                    }
+                    // Check for Table token followed by Column/Measure token
+                    else if (token.Type == DaxToken.TABLE)
+                    {
+                        Table table = Model.Tables.FirstOrDefault(t => t.Name == token.Text);
+                        if (table == null)
+                        {
+                            Error(token.Text + " table not found in the model.");
+                            return;
+                        }
+
+                        if (token.Next.Type == DaxToken.COLUMN_OR_MEASURE)
+                        {
+                            // Set flag to indicate next token is a column
+                            isColumn = true;
+                        }
+
+                        currentFormatExpression += table.DaxObjectFullName;
+                    }
+                    else if (token.Type == DaxToken.COLUMN_OR_MEASURE)
+                    {
+                        //currentFormatExpression += "[" + token.Text + "]";
+                        Output(currentFormatExpression);
+                        currentFormatExpression += String.Format(
+                            calcItemFormatReplaceExpression,
+                            targetMeasure.DaxObjectFullName,
+                            targetMeasure.Name);
+
+                        closeParenthesisFound2 = false;
+
+                    }
+                    else if(token.Type == DaxToken.SELECTEDMEASURE)
+                    {
+                        currentFormatExpression += "{0}";
+                        closeParenthesisFound2 = false;
+                    }
+                    else if (token.Type == DaxToken.SELECTEDMEASURENAME)
+                    {
+                        currentFormatExpression += @"""{1}""";
+                        closeParenthesisFound2 = false;
+                    }
+                    else if (token.Type == DaxToken.SELECTEDMEASUREFORMATSTRING)
+                    {
+                        currentFormatExpression += String.Format(
+                            calcItemFormatReplaceExpression,
+                            targetMeasure.DaxObjectFullName,
+                            targetMeasure.Name);
+
+                        closeParenthesisFound2 = false;
+                    }
+                    else if (token.Type == DaxToken.STRING_LITERAL)
+                    {
+                        currentFormatExpression += @"""" + token.Text + @"""";
+                    }
+                    else
+                    {
+                        currentFormatExpression += token.Text;
+                    }
+                }
+
+
+
+                
+
+                previousFormatExpression = currentFormatExpression;
+
+            }
+
+
+            //replace selectedmeasureformatstring by the format string of the target measure now 
+            previousFormatExpression = currentFormatExpression;
+            var finalTokens = DaxTokenizer.Tokenize(previousFormatExpression);
+            currentFormatExpression = "";
+            bool closeParenthesisFound3 = true;
+            foreach (var token in finalTokens)
+            {
+                if (!closeParenthesisFound3)
+                {
+                    if (token.Type == DaxToken.CLOSE_PARENS)
+                    {
+                        closeParenthesisFound3 = true;
+                    }
+                } else if (token.Type == DaxToken.SELECTEDMEASUREFORMATSTRING)
+                {
+                    if (targetMeasure.FormatStringExpression != null)
+                    {
+                        currentFormatExpression += targetMeasure.FormatStringExpression;
+                    }
+                    else
+                    {
+                        currentFormatExpression += @"""" + targetMeasure.FormatString + @"""";
+                    }
+
+                    closeParenthesisFound3 = false;
+
+                }
+                else if (token.Type == DaxToken.STRING_LITERAL)
+                {
+                    currentFormatExpression += @"""" + token.Text + @"""";
+                }
+                else if (token.Type == DaxToken.TABLE)
+                {
+                    currentFormatExpression += "'" + token.Text + "'";
+                }
+                else if (token.Type == DaxToken.COLUMN_OR_MEASURE)
+                {
+                    currentFormatExpression += "[" + token.Text + "]";
+                }
+                else
+                {
+                    currentFormatExpression += token.Text;
+                }
+
+                
+
+            }
+
+            currentFormatExpression = FormatDax(currentFormatExpression);
+
+            string fileName = targetMeasure.Name + "_" + calcGroupsByPrecedence.Select(cg=> cg.Name + " " + selectedItems[cg.Name]).Aggregate((a,b) => a + "_" + b) + ".dax";
+
+            string tempFile = Path.Combine(Path.GetTempPath(), "AppliedCalcGroupFormatExpression_" + fileName + ".dax");
+            File.WriteAllText(tempFile, currentFormatExpression);
+
+            System.Diagnostics.Process.Start("notepad.exe", tempFile);
+
+            Info("Expansion complete. Result saved to: " + tempFile);
+
+
+        }
+
+
+
+
+        void applyCalcGroups()
+        {
+            //this script only executes in TE3
+
+            //using Dax.Analyzer;
+            //using Dax.Formatter; 
+            //using System.IO;
+
+            //using GeneralFunctions; 
+
+#if TE3
+    ScriptHelper.WaitFormVisible = false;
+#endif
+
+            Measure targetMeasure = Fx.GetSelectedMeasure(Selected.Measures);
+            if (targetMeasure == null) return;
+
+            var selectedItems = Fx.SelectCalculationItems(Model, "Select one calculation item per group");
+            if (selectedItems == null || selectedItems.Count == 0) return;
+
+            // Get only calculation groups that have selected items, ordered by precedence (descending)
+            var calcGroupsByPrecedence = Model.Tables
+                .OfType<CalculationGroupTable>()
+                .Where(cg => selectedItems.ContainsKey(cg.Name))
+                .OrderByDescending(cg => cg.CalculationGroup.Precedence)
+                .ToList();
+
+            string previousExpression = targetMeasure.DaxObjectFullName;
+            string currentExpression = @"";
+
+            foreach (var calcGroup in calcGroupsByPrecedence)
+            {
+                string selectedItemName = selectedItems[calcGroup.Name];
+                //Output($"Calc Group: {calcGroup.Name}, Precedence: {calcGroup.CalculationGroup.Precedence}, Selected Item: {selectedItemName}");
+
+                // Get the actual calculation item object
+                var calcItem = calcGroup.CalculationItems.FirstOrDefault(ci => ci.Name == selectedItemName);
+                if (calcItem == null) { Error(String.Format("Calc Item {0} not found", selectedItemName)); return; } 
+                
+                var calcItemTokens = calcItem.Tokenize();
+
+                string calcItemReplaceExpression = String.Format(@"/*{0} - {1}*/",calcGroup.Name, selectedItemName) + Environment.NewLine;
+                bool closeParenthesisFound = true;
+                bool isSelectedMeasureArgs = false; 
+                //{0} SELECTEDMEASURE
+                //{1} SELECTEDMEASURENAME
+                //{2} SELECTEDMEASUREFORMATSTRING
+                foreach(var calcItemToken in calcItemTokens)
+                {
+                    if (!closeParenthesisFound)
+                    {
+                        if (calcItemToken.Type == DaxToken.CLOSE_PARENS)
+                        {
+                            closeParenthesisFound = true;
+                        }
+                        if (isSelectedMeasureArgs)
+                        {
+                            if (calcItemToken.Type == DaxToken.CLOSE_PARENS){
+                                calcItemReplaceExpression += "}}";
+                                isSelectedMeasureArgs = false;
+
+                            }
+                            else if (calcItemToken.Type == DaxToken.COLUMN_OR_MEASURE)
+                            {
+                                calcItemReplaceExpression += @"""" + calcItemToken.Text + @"""";
+                                    
+                            }else if (calcItemToken.Type == DaxToken.COMMA)
+                            {
+                                calcItemReplaceExpression += calcItemToken.Text;
+                            }
+
+                        }
+
+                            
+                    } else if (calcItemToken.Type == DaxToken.TABLE)
+                    {
+                        calcItemReplaceExpression += "'" + calcItemToken.Text + "'";
+
+                    }
+                    else if (calcItemToken.Type == DaxToken.COLUMN_OR_MEASURE)
+                    {
+                        calcItemReplaceExpression += "[" + calcItemToken.Text + "]";
+                    }
+                    else if (calcItemToken.Type == DaxToken.SELECTEDMEASURE)
+                    {
+                        calcItemReplaceExpression += "{0}";
+                        closeParenthesisFound = false;
+
+                    }
+                    else if (calcItemToken.Type == DaxToken.ISSELECTEDMEASURE)
+                    {
+                        calcItemReplaceExpression += @"""{1}"" IN {{";
+                        isSelectedMeasureArgs = true;
+                        closeParenthesisFound = false;
+
+                    }
+                    else if (calcItemToken.Type == DaxToken.SELECTEDMEASURENAME)
+                    {
+                        calcItemReplaceExpression += @"""{1}""";
+                        closeParenthesisFound = false;
+
+                    }
+                    else if (calcItemToken.Type == DaxToken.SELECTEDMEASUREFORMATSTRING)
+                    {
+                        calcItemReplaceExpression += @"{2}";
+                        closeParenthesisFound = false;
+                    }
+                    else if(calcItemToken.Type == DaxToken.STRING_LITERAL)
+                    {
+                        calcItemReplaceExpression += @"""" + calcItemToken.Text + @"""";
+                    }
+                    else
+                    {
+                        calcItemReplaceExpression += calcItemToken.Text;
+                    }
+
+                }
+
+                var expressionTokens = DaxTokenizer.Tokenize(previousExpression);
+                currentExpression = "";
+                bool isColumn = false;
+
+                foreach(var token in expressionTokens)
+                {
+                    
+                    // Check if previous token indicated this is a column
+                    if (isColumn)
+                    {
+                        currentExpression += "[" + token.Text + "]";
+                        isColumn = false;
+                    }
+                    // Check for Table token followed by Column/Measure token
+                    else if (token.Type == DaxToken.TABLE)
+                    {
+                        Table table = Model.Tables.FirstOrDefault(t => t.Name == token.Text);
+                        if (table == null)
+                        {
+                            Error(token.Text + " table not found in the model.");
+                            return;
+                        }
+
+                        if (token.Next.Type == DaxToken.COLUMN_OR_MEASURE)
+                        {
+                            // Set flag to indicate next token is a column
+                            isColumn = true;
+                        }
+
+                        currentExpression += table.DaxObjectFullName;
+                    }
+                    else if (token.Type == DaxToken.COLUMN_OR_MEASURE)
+                    {
+                        Measure measure = Model.AllMeasures.FirstOrDefault(m => m.Name == token.Text);
+                        if (measure == null)
+                        {
+                            Error(token.Text + " measure not found in the model.");
+                            return;
+                        }
+
+                        
+
+                        currentExpression += String.Format(
+                            calcItemReplaceExpression,
+                            measure.DaxObjectFullName,
+                            measure.Name,
+                            measure.FormatString ?? measure.FormatStringExpression);
+                    }
+                    else if (token.Type == DaxToken.STRING_LITERAL)
+                    {
+                        currentExpression += @"""" + token.Text + @"""";
+                    }
+                    else
+                    {
+                        currentExpression += token.Text;
+                    }
+                }
+
+                currentExpression = FormatDax(currentExpression);
+                previousExpression = currentExpression; 
+
+            }
+
+
+            Output(currentExpression.ReplaceLineEndings()); 
+            
+            //string tempFile = Path.Combine(Path.GetTempPath(), "ExpandedDAX_test.dax");
+            //File.WriteAllText(tempFile, currentExpression);
+
+            //System.Diagnostics.Process.Start("notepad.exe", tempFile);
+
+            //Info("Expansion complete. Result saved to: " + tempFile);
+
+
+        }
+
+
+        
+
+
+
+        void evaluatedDax()
+        {
+
+            //this script only executes in TE3
+
+            //using Dax.Analyzer;
+            //using Dax.Formatter; 
+            //using System.IO;
+            //using GeneralFunctions;
+            //using DaxUserDefinedFunction;
+
+
+            Measure targetMeasure = Fx.GetSelectedMeasure(Selected.Measures);
+            if (targetMeasure == null) return;
+
+            string measureName = targetMeasure.Name; 
+            string previousExpression = targetMeasure.Expression;
+
+            // Parse all UDFs in the model and create expression templates
+            var udfTemplates = new Dictionary<string, (string template, List<FunctionParameter> parameters)>();
+
+            foreach (var function in Model.Functions/*.Where(f => f.Name == "Local.TimeIntel.YOYPCT")*/) 
+            {
+                FunctionExtended fe = FunctionExtended.CreateFunctionExtended(function,completeMetadata: false);
+                if (fe == null) continue;
+
+                // Extract the expression body (after =>)
+                string funcExpression = function.Expression;
+                int arrowIndex = funcExpression.IndexOf("=>");
+                if (arrowIndex == -1) continue;
+
+                string expressionBody = funcExpression.Substring(arrowIndex + 2).Trim();
+                
+                // Tokenize the function expression to build the template
+                var funcTokens = DaxTokenizer.Tokenize(expressionBody);
+                string template = "";
+                
+                // Build ANYVAL variable declarations for parameters that are not EXPR/ANYREF
+                var anyvalParams = fe.Parameters.Where(p => 
+                    p.ParameterMode != "EXPR" && 
+                    p.Type != "ANYREF").ToList();
+                
+                if (anyvalParams.Count > 0)
+                {
+                    template += String.Format(@"/*{0}*/" + Environment.NewLine, function.Name);
+                    foreach (var param in anyvalParams)
+                    {
+                        int paramIndex = fe.Parameters.IndexOf(param);
+                        template += String.Format("VAR __param_{0} = {{{1}}}" + Environment.NewLine, param.Name, paramIndex);
+                    }
+                    template += "RETURN" + Environment.NewLine;
+                }
+                else
+                {
+                    template += String.Format(@"/*{0}*/" + Environment.NewLine, function.Name);
+                }
+                
+                // Process tokens and replace parameter names with placeholders
+                foreach (var token in funcTokens)
+                {
+                    if (token.Type == DaxToken.TABLE_OR_VARIABLE)
+                    {
+                        // Check if this is a parameter name
+                        var matchingParam = fe.Parameters.FirstOrDefault(p => p.Name == token.Text);
+                        if (matchingParam != null)
+                        {
+                            int paramIndex = fe.Parameters.IndexOf(matchingParam);
+                            
+                            // If ANYVAL, use the variable instead
+                            if (matchingParam.ParameterMode != "EXPR" && matchingParam.Type != "ANYREF")
+                            {
+                                template += "__param_" + matchingParam.Name;
+                            }
+                            else
+                            {
+                                template += "{" + paramIndex + "}";
+                            }
+                        }
+                        else
+                        {
+                            template += "'" + token.Text + "'";
+                        }
+                    }
+                    else if (token.Type == DaxToken.TABLE)
+                    {
+                        template += "'" + token.Text + "'";
+                    }
+                    else if (token.Type == DaxToken.STRING_LITERAL)
+                    {
+                        template += @"""" + token.Text + @"""";
+                    }
+                    else if(token.Type == DaxToken.COLUMN_OR_MEASURE)
+                    {
+                        template += "[" + token.Text + "]";
+                    }
+
+
+                    else
+                    {
+                        template += token.Text;
+                    }
+                }
+                
+                udfTemplates[function.Name] = (template, fe.Parameters);
+            }
+            
+            //initialize variables for the iterations    
+            var tokens = DaxTokenizer.Tokenize(previousExpression);
+
+            string currentExpression = ""; 
+            bool isColumn = false;
+            int i = 0;
+
+            bool isDaxUdf = false; 
+            string daxUdfName = null; 
+            IList<string> daxParams = new List<string>();
+            string paramValue = null;
+            bool daxUdfFirstParensFound = false;
+            int daxUdfParensCount = 0;
+            int paramParensCount = 0; 
+            
+            //Check if there are any column_or_measure tokens not preceded by a table token,
+            // or a column_or_measure as first token, 
+            // or a Other_identifier (i.e. DAX UDF) 
+            // and limit to 10 iterations
+            while (tokens.Any(t => 
+                (
+                    (
+                        t.Type == DaxToken.COLUMN_OR_MEASURE
+                        && (t.Prev.Type != DaxToken.TABLE || t.TokenIndex == 0))
+                    )
+                    ||
+                    (   t.Type == 113 /*DaxToken.OTHER_IDENTIFIER */)
+                )
+                && i<10)
+            {
+                
+                currentExpression = "";
+
+                // this code assumes that columns are always preceded by table and measures are not
+                foreach (DaxToken token in tokens)
+                {
+                    // Check if previous token indicated this is a column
+                    if (isColumn)
+                    {
+                        currentExpression += "[" + token.Text + "]";
+                        isColumn = false;
+                    }
+                    else if (isDaxUdf)
+                    {
+                        if (token.Type == DaxToken.OPEN_PARENS)
+                        {
+                            if (!daxUdfFirstParensFound)
+                            {
+                                daxUdfFirstParensFound = true;
+                                paramValue = "";
+                            }
+                            else
+                            {
+                                paramValue += token.Text;
+                            }
+
+                            daxUdfParensCount += 1;
+                            paramParensCount += 1;
+
+                        }
+
+                        else if (token.Type == DaxToken.CLOSE_PARENS)
+                        {
+                            daxUdfParensCount -= 1;
+                            paramParensCount -= 1;
+
+                            if (daxUdfParensCount == 0)
+                            {
+                                daxParams.Add(paramValue);
+                                paramValue = null;
+
+                                // Expand the UDF expression with the collected parameters
+                                if (udfTemplates.ContainsKey(daxUdfName))
+                                {
+                                    var udfInfo = udfTemplates[daxUdfName];
+                                    
+                                    // Create array of parameter values for String.Format
+                                    object[] paramValues = daxParams.Select(p => (object)p).ToArray();
+
+                                    // Format the template with actual parameter values
+                                    string expandedUdf = String.Format(udfInfo.template, paramValues);
+                                    
+                                    currentExpression += expandedUdf;
+                                }
+                                else
+                                {
+                                    // UDF not found in templates, keep as-is
+                                    currentExpression += daxUdfName + "(" + string.Join(",", daxParams) + ")";
+                                }
+                                
+                                // Reset UDF tracking variables
+                                isDaxUdf = false;
+                                daxUdfName = null;
+                                daxParams = new List<string>();
+                                daxUdfFirstParensFound = false;
+                            }
+                            else
+                            {
+                                paramValue += token.Text;
+                            }
+                        }
+
+
+                        else if (token.Type == DaxToken.COMMA)
+                        {
+                            if (paramParensCount == 0) { 
+                                daxParams.Add(paramValue);
+                                paramValue = "";
+
+                            }
+                            else
+                            {
+                                paramValue += token.Text; 
+                            }
+
+
+                        } 
+                        else
+                        {
+                            if(token.Type == DaxToken.COLUMN_OR_MEASURE)
+                            {
+                                paramValue += "[" + token.Text + "]";
+                            }else if(token.Type == DaxToken.TABLE)
+                            {
+                                paramValue += "'" + token.Text + "'";
+                            }
+                            else if (token.CommentOrWhitespace)
+                            {
+                                /*do nothing*/
+                            }
+                            else
+                            {
+                                paramValue += token.Text;
+                            }
+                        }
+                    }
+                    // Check for Table token followed by Column/Measure token
+                    else if (token.Type == DaxToken.TABLE)
+                    {
+                        Table table = Model.Tables.FirstOrDefault(t => t.Name == token.Text);
+                        if (table == null)
+                        {
+                            Error(token.Text + " table not found in the model.");
+                            return;
+                        }
+
+                        if (token.Next.Type == DaxToken.COLUMN_OR_MEASURE)
+                        {
+                            // Set flag to indicate next token is a column
+                            isColumn = true;
+                        }
+
+                        currentExpression += table.DaxObjectFullName;
+                    }
+                    else if (token.Type == DaxToken.COLUMN_OR_MEASURE)
+                    {
+                        Measure measure = Model.AllMeasures.FirstOrDefault(m => m.Name == token.Text);
+                        if (measure == null)
+                        {
+                            Error(token.Text + " measure not found in the model.");
+                            return;
+                        }
+
+                        currentExpression += String.Format(
+                            @"/*{0}*/
+                            CALCULATE({1})",
+                            measure.Name,
+                            measure.Expression);
+                    }
+                    else if (token.Type == 113 /*other identifier*/) {
+                        isDaxUdf = true;
+                        daxUdfName = token.Text;
+
+                    }
+                    else
+                    {
+                        currentExpression += token.Text;
+                    }
+                }
+
+                currentExpression = FormatDax(currentExpression);
+
+                previousExpression = currentExpression;
+                tokens = DaxTokenizer.Tokenize(previousExpression);
+                i++;
+
+            }
+
+            Output(currentExpression.ReplaceLineEndings());
+            //string tempFile = Path.Combine(Path.GetTempPath(), "ExpandedDAX_" + measureName.Replace(" ", "_") + ".dax");
+            //File.WriteAllText(tempFile, currentExpression);
+
+            //System.Diagnostics.Process.Start("notepad.exe", tempFile);
+
+            //Info("Expansion complete. Result saved to: " + tempFile);
+        }
+        
+        void disableAutoDateTime()
+        {
+
+            // 2025-11-30 / B.Agullo
+            // Disables the Auto Date/Time feature in the model by removing local date tables and date table templates.
+
+            IList<string> LocalDateTables =
+                Model.Tables.Where(
+                    t => t.GetAnnotation("__PBI_LocalDateTable") == "true")
+                .Select(t => t.Name).ToList();
+
+            foreach (string tName in LocalDateTables)
+            {
+                Model.Tables[tName].Delete();
+            }
+
+            IList<string> DateTableTemplate =
+                Model.Tables.Where(
+                    t => t.GetAnnotation("__PBI_TemplateDateTable") == "true")
+                .Select(t => t.Name).ToList();
+
+            foreach (string tName in DateTableTemplate)
+            {
+                Model.Tables[tName].Delete();
+            }
+
+            Model.SetAnnotation("__PBI_TimeIntelligenceEnabled", "0");
+        }
         void applyDisplayNames()
         {
             //using GeneralFunctions;
@@ -1357,7 +2178,7 @@ namespace TE_Scripting
 
                         if (destinationTable == null)
                         {
-                            destinationTable = SelectTable(label: "Select destinatoin table for " + func.OutputType + " " + currentListNames[i]);
+                            destinationTable = SelectTable(preselect: null, label: $"Select destinatoin table for {func.OutputType} {currentListNames[i]}");
                             if (destinationTable == null) return;
                         }
 
@@ -2321,10 +3142,10 @@ namespace TE_Scripting
 #endif
 
             Fx.CreateCalcTable(Model, "myMeasures", "{0}");
-
+        
       
         }
-
+        
 
 
         //code snippets
@@ -2432,8 +3253,8 @@ namespace TE_Scripting
             string macroFilePath = String.Format(@"{0}\TE Scripts\TE Scripts.cs", baseFolderPath);
             string generalFunctionsClassFilePath = String.Format(@"{0}\GeneralFunctions\GeneralFunctions.cs", baseFolderPath);
             string reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);
-            string reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
             string daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
+            string reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
 
             TE_Scripting.TE_Scripts.CopyMacroFromVSFile(
                 macroFilePath, generalFunctionsClassFilePath, reportClassFilePath,reportFunctionsClassFilePath, daxUserDefinedFunctionClassFilePath
@@ -2830,11 +3651,14 @@ namespace TE_Scripting
         //these two are necessary to have the Model and Selected objects available in the script
         static readonly Model Model;
         static readonly TabularEditor.UI.UITreeSelection Selected;
+        
+
 
 
         //These functions replicate the ScriptHelper functions so that they can be
         //used inside the script without the ScriptHelper prefix which cannot be used inside tabular editor
         //the list is not complete and does not include all overloads, complete as necessary. 
+        
         public static void Error(string message, int lineNumber = -1, bool suppressHeader = false)
         {
             ScriptHelper.Error(message: message, lineNumber: lineNumber, suppressHeader: suppressHeader);
@@ -2874,6 +3698,37 @@ namespace TE_Scripting
         {
             ScriptHelper.Output(value: value, lineNumber: lineNumber);
         }
-        
+
+        public static string FormatDax(string dax)
+        {
+            var client = new DaxFormatterClient();
+
+            var req = new DaxFormatterSingleRequest
+            {
+                Dax = dax
+            };
+
+            var resp = client.FormatAsync(req).GetAwaiter().GetResult();
+            return resp.Formatted;
+        }
+
+    }
+
+    // Extension method to enable ReplaceLineEndings() syntax for .NET Framework 4.8
+    // Note: This is only for Visual Studio compilation. Tabular Editor 3 uses .NET 6+ which has the native method.
+    public static class StringExtensions
+    {
+        public static string ReplaceLineEndings(this string value)
+        {
+            // This implementation will never be called in Tabular Editor 3
+            // It's only here to satisfy Visual Studio's compiler
+            return value?.Replace("\r\n", Environment.NewLine).Replace("\n", Environment.NewLine).Replace("\r", Environment.NewLine);
+        }
+
+        public static string ReplaceLineEndings(this string value, string replacementText)
+        {
+            // Overload that accepts a replacement string
+            return value?.Replace("\r\n", replacementText).Replace("\n", replacementText).Replace("\r", replacementText);
+        }
     }
 }

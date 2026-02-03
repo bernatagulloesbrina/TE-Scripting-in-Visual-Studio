@@ -30,7 +30,167 @@ namespace GeneralFunctions
         // NOCOPY    in TE2 (at least up to 2.17.2) any method that accesses or modifies
         // NOCOPY    the model needs a reference to the model 
         // NOCOPY    the following is an example method where you can build extra logic
+        
+        public static Measure GetSelectedMeasure(IEnumerable<Measure> measures, string label = "Select Measure")
+        {
+            Measure selectedMeasure = null;
+            if (measures.Count() == 1)
+            {
+                selectedMeasure = measures.First();
+            }
+            else
+            {
+                selectedMeasure = SelectMeasure(preselect: null, label: label);
+                if (selectedMeasure == null)
+                {
+                    Info("No measure selected.");
+                    return null;
+                }
 
+            }
+            
+            return selectedMeasure;
+        }
+        
+        public static Dictionary<string, string> SelectCalculationItems(Model model, string label = "Select calculation items (max 1 per group)")
+        {
+            
+            if (!model.Tables.OfType<CalculationGroupTable>().Any())
+            {
+                Info("No calculation groups found in the model.");
+                return null;
+            }
+
+            // Create a TreeView form
+            Form form = new Form
+            {
+                Text = label,
+                StartPosition = FormStartPosition.CenterScreen,
+                Width = 600,
+                Height = 500,
+                Padding = new Padding(10)
+            };
+
+            TreeView treeView = new TreeView
+            {
+                Dock = DockStyle.Fill,
+                CheckBoxes = true
+            };
+
+            // Track selections per calculation group
+            var selectionMap = new Dictionary<string, TreeNode>();
+
+            // Populate tree with calculation groups and items
+            foreach (var calcGroup in model.Tables.OfType<CalculationGroupTable>())
+            {
+                TreeNode groupNode = new TreeNode(calcGroup.Name)
+                {
+                    Tag = calcGroup
+                };
+
+                foreach (var calcItem in calcGroup.CalculationItems)
+                {
+                    TreeNode itemNode = new TreeNode(calcItem.Name)
+                    {
+                        Tag = calcItem
+                    };
+                    groupNode.Nodes.Add(itemNode);
+                }
+
+                treeView.Nodes.Add(groupNode);
+                groupNode.Expand();
+            }
+
+            // Handle BeforeCheck to prevent checking group nodes
+            treeView.BeforeCheck += (sender, e) =>
+            {
+                // Prevent checking calculation group nodes (only allow calculation items)
+                if (e.Node.Tag is CalculationGroupTable)
+                {
+                    e.Cancel = true;
+                }
+            };
+
+            // Handle node check events to enforce "one per group" rule
+            treeView.AfterCheck += (sender, e) =>
+            {
+                if (e.Node.Tag is CalculationItem)
+                {
+                    var calcItem = (CalculationItem)e.Node.Tag;
+                    string groupName = calcItem.CalculationGroupTable.Name;
+
+                    if (e.Node.Checked)
+                    {
+                        // Uncheck any previously selected item in this group
+                        if (selectionMap.ContainsKey(groupName))
+                        {
+                            selectionMap[groupName].Checked = false;
+                        }
+                        selectionMap[groupName] = e.Node;
+                    }
+                    else
+                    {
+                        // Remove from selection if unchecked
+                        if (selectionMap.ContainsKey(groupName) && selectionMap[groupName] == e.Node)
+                        {
+                            selectionMap.Remove(groupName);
+                        }
+                    }
+                }
+            };
+
+            // Button panel
+            FlowLayoutPanel buttonPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 50,
+                FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(5)
+            };
+
+            Button okButton = new Button
+            {
+                Text = "OK",
+                DialogResult = DialogResult.OK,
+                Width = 80,
+                Height = 30
+            };
+
+            Button cancelButton = new Button
+            {
+                Text = "Cancel",
+                DialogResult = DialogResult.Cancel,
+                Width = 80,
+                Height = 30
+            };
+
+            buttonPanel.Controls.Add(okButton);
+            buttonPanel.Controls.Add(cancelButton);
+
+            form.Controls.Add(treeView);
+            form.Controls.Add(buttonPanel);
+
+            // Show dialog
+            DialogResult result = form.ShowDialog();
+
+            if (result == DialogResult.Cancel)
+            {
+                Info("Selection cancelled.");
+                return null;
+            }
+
+            // Build result dictionary: CalculationGroupName -> CalculationItemName
+            var selectedItems = new Dictionary<string, string>();
+            foreach (var kvp in selectionMap)
+            {
+                if (kvp.Value.Checked)
+                {
+                    selectedItems[kvp.Key] = kvp.Value.Text;
+                }
+            }
+
+            return selectedItems;
+        }
         public static void CheckCompatibilityVersion(Model model, int requiredVersion, string customMessage = "Compatibility level must be raised to {0} to run this script. Do you want raise the compatibility level?")
         {
             if (model.Database.CompatibilityLevel < requiredVersion)
@@ -521,30 +681,30 @@ namespace GeneralFunctions
         //These functions replicate the ScriptHelper functions so that they can be
         //used inside the script without the ScriptHelper prefix which cannot be used inside tabular editor
         //the list is not complete and does not include all overloads, complete as necessary. 
-        public static void Error(string message, int lineNumber = -1, bool suppressHeader = false)
+        private static void Error(string message, int lineNumber = -1, bool suppressHeader = false)
         {
             ScriptHelper.Error(message: message, lineNumber: lineNumber, suppressHeader: suppressHeader);
         }
 
-        public static void Info(string message, int lineNumber = -1)
+        private static void Info(string message, int lineNumber = -1)
         {
             ScriptHelper.Info(message: message, lineNumber: lineNumber);
         }
 
-        public static Table SelectTable(IEnumerable<Table> tables, Table preselect = null, string label = "Select Table")
+        private static Table SelectTable(IEnumerable<Table> tables, Table preselect = null, string label = "Select Table")
         {
             return ScriptHelper.SelectTable(tables: tables, preselect: preselect, label: label);
         }
-        public static Measure SelectMeasure(Measure preselect = null, string label = "Select Table")
+        private static Measure SelectMeasure(Measure preselect = null, string label = "Select Table")
         {
             return ScriptHelper.SelectMeasure(preselect: preselect, label: label);
         }
 
-        public static Column SelectColumn(IEnumerable<Column> columns, Column preselect = null, string label = "Select Column")
+        private static Column SelectColumn(IEnumerable<Column> columns, Column preselect = null, string label = "Select Column")
         {
             return ScriptHelper.SelectColumn(columns: columns, preselect: preselect, label: label);
         }
-        public static void Output(object value, int lineNumber = -1)
+        private static void Output(object value, int lineNumber = -1)
         {
             ScriptHelper.Output(value: value, lineNumber: lineNumber);
         }

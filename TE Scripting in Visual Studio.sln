@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.13.35919.96
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11222.15 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TE Scripts", "TE Scripts\TE Scripts.csproj", "{C65D5AD4-527E-4AF4-A292-6DC7358972C4}"
 EndProject
@@ -18,6 +18,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReportFunctions", "ReportFunctions\ReportFunctions.csproj", "{4265A5A4-2150-4B47-AB33-BE678A685998}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DaxUserDefinedFunction", "DaxUserDefinedFunction\DaxUserDefinedFunction.csproj", "{F68EDC3D-2EF8-466A-9D36-F679F0FFF823}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dax.Analyzer", "Dax.Analyzer\Dax.Analyzer.csproj", "{146FCF26-DD52-430F-85EC-7E60DA4D8F3C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -46,6 +48,10 @@ Global
 		{F68EDC3D-2EF8-466A-9D36-F679F0FFF823}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F68EDC3D-2EF8-466A-9D36-F679F0FFF823}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F68EDC3D-2EF8-466A-9D36-F679F0FFF823}.Release|Any CPU.Build.0 = Release|Any CPU
+		{146FCF26-DD52-430F-85EC-7E60DA4D8F3C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{146FCF26-DD52-430F-85EC-7E60DA4D8F3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{146FCF26-DD52-430F-85EC-7E60DA4D8F3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{146FCF26-DD52-430F-85EC-7E60DA4D8F3C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
