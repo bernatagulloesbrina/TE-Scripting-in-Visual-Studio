@@ -3531,7 +3531,7 @@ namespace TE_Scripting
                             if (!previousCode.Contains(usingLine))
                             {
                                 //insert in the code right before the first one
-                                previousCode = previousCode.Substring(0, Math.Max(usingFirstMacroCode - 1, 0))
+                                previousCode = previousCode.Substring(0, Math.Max(usingFirstMacroCode, 0))
                                     + Environment.NewLine + usingLine.Trim() + Environment.NewLine
                                     + previousCode.Substring(usingFirstMacroCode);
 
