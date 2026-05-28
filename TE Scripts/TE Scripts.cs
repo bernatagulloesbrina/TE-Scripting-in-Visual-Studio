@@ -39,6 +39,675 @@ namespace TE_Scripting
     {
 
 
+        void createDynamicMeasure()
+        {
+            //using GeneralFunctions;
+
+            // 2025-01-07 / B.Agullo
+            // Creates a dynamic measure and disconnected tables based on Properties annotations of selected measures.
+            // Each property position gets its own disconnected table with distinct values across all measures.
+            // The dynamic measure returns the appropriate measure based on selected values in each disconnected table.
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
+            // Validate selection
+            if (Selected.Measures.Count() < 2)
+            {
+                Error("Select at least two measures with Properties annotations and try again.");
+                return;
+            }
+
+            // Step 1: Extract and validate Properties annotations
+            var measuresWithProperties = new List<(Measure measure, List<string> properties)>();
+            
+            foreach (var measure in Selected.Measures)
+            {
+                string propertiesAnnotation = measure.GetAnnotation("Properties");
+                if (string.IsNullOrEmpty(propertiesAnnotation))
+                {
+                    Error(String.Format("Measure '{0}' does not have a Properties annotation.", measure.Name));
+                    return;
+                }
+
+                var properties = propertiesAnnotation.Split('|').ToList();
+                measuresWithProperties.Add((measure, properties));
+            }
+
+            // Step 2: Validate all have the same length
+            int propertyCount = measuresWithProperties[0].properties.Count;
+            if (measuresWithProperties.Any(m => m.properties.Count != propertyCount))
+            {
+                Error("All Properties annotations must have the same number of pipe-separated values.");
+                return;
+            }
+
+            // Step 3: Validate all Properties annotations are unique
+            var allPropertiesStrings = measuresWithProperties.Select(m => string.Join("|", m.properties)).ToList();
+            if (allPropertiesStrings.Count != allPropertiesStrings.Distinct().Count())
+            {
+                Error("All Properties annotations must be unique. Some measures have duplicate Properties.");
+                return;
+            }
+
+            // Step 4: Ask user for dynamic measure name
+            string dynamicMeasureName = Fx.GetNameFromUser(
+                Prompt: "Enter the name for the dynamic measure:",
+                Title: "Dynamic Measure Name",
+                DefaultResponse: "Dynamic Measure"
+            );
+            if (dynamicMeasureName == null) return;
+
+            // Step 5: Get destination table (use first measure's table)
+            Table destinationTable = measuresWithProperties[0].measure.Table;
+
+            // Step 6: Create disconnected tables for each property position
+            var propertyTables = new List<Table>();
+            
+            for (int i = 0; i < propertyCount; i++)
+            {
+                // Collect distinct values for this property position across all measures
+                var distinctValues = measuresWithProperties
+                    .Select(m => m.properties[i])
+                    .Distinct()
+                    .OrderBy(v => v)
+                    .ToList();
+
+                // Create table name
+                string tableName = String.Format("Property{0}", i + 1);
+                
+                // Build DAX expression for calculated table
+                string tableDax = "{" + Environment.NewLine;
+                for (int j = 0; j < distinctValues.Count; j++)
+                {
+                    tableDax += String.Format("    (\"{0}\", {1})", distinctValues[j], j);
+                    if (j < distinctValues.Count - 1)
+                        tableDax += "," + Environment.NewLine;
+                }
+                tableDax += Environment.NewLine + "}";
+
+                // Create the calculated table
+                var propTable = Model.AddCalculatedTable(tableName, tableDax);
+
+                // Setup columns (handle both TE2 and TE3)
+                var te2 = propTable.Columns.Count == 0;
+                var valueColumn = te2 
+                    ? propTable.AddCalculatedTableColumn(tableName, "[Value1]") 
+                    : propTable.Columns["Value1"] as CalculatedTableColumn;
+                var orderColumn = te2 
+                    ? propTable.AddCalculatedTableColumn(tableName + " Order", "[Value2]") 
+                    : propTable.Columns["Value2"] as CalculatedTableColumn;
+
+                if (!te2)
+                {
+                    valueColumn.IsNameInferred = false;
+                    valueColumn.Name = tableName;
+                    orderColumn.IsNameInferred = false;
+                    orderColumn.Name = tableName + " Order";
+                }
+
+                valueColumn.SortByColumn = orderColumn;
+                orderColumn.IsHidden = true;
+
+                propertyTables.Add(propTable);
+            }
+
+            // Step 7: Build dynamic measure expression
+            string measureExpression = "";
+            
+            // Add variable declarations for each property
+            for (int i = 0; i < propertyCount; i++)
+            {
+                measureExpression += String.Format(
+                    "VAR __{0} = SELECTEDVALUE( '{1}'[{1}] )" + Environment.NewLine,
+                    propertyTables[i].Name,
+                    propertyTables[i].Name
+                );
+            }
+            
+            measureExpression += "RETURN" + Environment.NewLine;
+            measureExpression += "SWITCH(" + Environment.NewLine + "    TRUE()," + Environment.NewLine;
+            
+            foreach (var item in measuresWithProperties)
+            {
+                // Build condition for this measure using variables
+                string condition = "    ";
+                for (int i = 0; i < propertyCount; i++)
+                {
+                    if (i > 0)
+                        condition += Environment.NewLine + "        && ";
+                    
+                    condition += String.Format(
+                        "__{0} = \"{1}\"",
+                        propertyTables[i].Name,
+                        item.properties[i]
+                    );
+                }
+                
+                measureExpression += condition + "," + Environment.NewLine;
+                measureExpression += String.Format("        {0}," + Environment.NewLine, item.measure.DaxObjectFullName);
+            }
+            
+            measureExpression += "    BLANK()" + Environment.NewLine + ")";
+
+            // Step 8: Create the dynamic measure
+            Measure dynamicMeasure = destinationTable.AddMeasure(dynamicMeasureName, measureExpression);
+            dynamicMeasure.FormatDax();
+
+            // Step 9: Build dynamic format string expression
+            string formatExpression = "";
+            
+            // Add variable declarations for each property
+            for (int i = 0; i < propertyCount; i++)
+            {
+                formatExpression += String.Format(
+                    "VAR __{0} = SELECTEDVALUE( '{1}'[{1}] )" + Environment.NewLine,
+                    propertyTables[i].Name,
+                    propertyTables[i].Name
+                );
+            }
+            
+            formatExpression += "RETURN" + Environment.NewLine;
+            formatExpression += "SWITCH(" + Environment.NewLine + "    TRUE()," + Environment.NewLine;
+            
+            foreach (var item in measuresWithProperties)
+            {
+                // Build condition for this measure using variables
+                string condition = "    ";
+                for (int i = 0; i < propertyCount; i++)
+                {
+                    if (i > 0)
+                        condition += Environment.NewLine + "        && ";
+                    
+                    condition += String.Format(
+                        "__{0} = \"{1}\"",
+                        propertyTables[i].Name,
+                        item.properties[i]
+                    );
+                }
+                
+                formatExpression += condition + "," + Environment.NewLine;
+                
+                // Use format string or format string expression
+                string formatValue = !string.IsNullOrEmpty(item.measure.FormatStringExpression)
+                    ? item.measure.FormatStringExpression
+                    : String.Format("\"{0}\"", item.measure.FormatString);
+                
+                formatExpression += String.Format("        {0}," + Environment.NewLine, formatValue);
+            }
+            
+            formatExpression += "    \"\"" + Environment.NewLine + ")";
+
+            // Set format string expression
+            dynamicMeasure.FormatStringExpression = formatExpression;
+
+            Output(String.Format(
+                "Created dynamic measure '{0}' with {1} property tables and {2} source measures.",
+                dynamicMeasureName,
+                propertyTables.Count,
+                measuresWithProperties.Count
+            ));
+        }
+
+
+        void SingleMeasureParameterFunction()
+        {
+
+            //2025-09-26/B.Agullo/ fixed bug that would not store annotations if initialized during runtime
+            //2025-09-16/B.Agullo/
+            //Creates measures based on DAX UDFs 
+            //Check the blog post for futher information: https://www.esbrina-ba.com/automatically-create-measures-with-dax-user-defined-functions/
+
+            //using GeneralFunctions;
+            //using DaxUserDefinedFunction;
+            //using System.Text.RegularExpressions;
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
+            // PSEUDOCODE / PLAN:
+            // 1. Verify that the user has selected one or more functions (Selected.Functions).
+            // 2. If none selected, show error and abort.
+            // 3. Create FunctionExtended objects for each selected function and keep them in a list.
+            // 4. Extract all parameters from the selected functions and build a distinct list by name.
+            // 5. For each distinct parameter name:
+            //      - Prompt the user once with Fx.SelectAnyObjects to choose the objects to iterate for that parameter.
+            //      - If the user cancels or selects nothing, abort the whole operation.
+            //      - Store the resulting IList<string> in a dictionary keyed by parameter name so it can be retrieved later.
+            // 6. Example usage: create a sample FunctionExtended (as the original example does),
+            //    then when iterating the function parameters use the previously built dictionary to obtain the list
+            //    of objects for each parameter name (do not prompt again).
+            // 7. Build measure names/expressions by iterating the parameter-object combinations and create measures.
+            //
+            // NOTES:
+            // - All Fx.SelectAnyObjects calls must use parameter names on the call.
+            // - The dictionary is Dictionary<string, IList<string>> parameterObjectsMap.
+            // - Abort execution if any required selection is cancelled.
+
+            // Validate selection
+            if (Selected.Functions.Count() == 0)
+            {
+                Error("Select one or more functions and try again.");
+                return;
+            }
+
+            // Create FunctionExtended objects for each selected function and store them for later iteration
+            IList<FunctionExtended> selectedFunctions = new List<FunctionExtended>();
+
+            foreach (var f in Selected.Functions)
+            {
+                // Create the FunctionExtended and add to list
+                FunctionExtended fe = FunctionExtended.CreateFunctionExtended(f);
+                selectedFunctions.Add(fe);
+            }
+
+            // Flatten all parameters from selected functions
+            var allParametersFlat = selectedFunctions
+                .SelectMany(sf => sf.Parameters ?? new List<FunctionParameter>())
+                .ToList();
+
+            // Build distinct FunctionParameter objects (first occurrence per name)
+            IList<FunctionParameter> distinctParameters = allParametersFlat
+                .GroupBy(p => p.Name)
+                .Select(g => g.First())
+                .ToList();
+
+            // For each distinct parameter, ask the user once which objects should be iterated and store mapping
+
+            var parameterObjectsMap = new Dictionary<string, (IList<string> Values, string Type)>();
+            foreach (var param in distinctParameters)
+            {
+                string selectionType = null;
+                if (param.Name.ToUpper().Contains("MEASURE"))
+                {
+                    selectionType = "Measure";
+                }
+                else if (param.Name.ToUpper().Contains("COLUMN"))
+                {
+                    selectionType = "Column";
+                }
+                else if (param.Name.ToUpper().Contains("TABLE"))
+                {
+                    selectionType = "Table";
+                }
+
+
+                (IList<string> Values, string Type) selectedObjectsForParam = Fx.SelectAnyObjects(
+                    Model,
+                    selectionType: selectionType,
+                    prompt1: String.Format(@"Select object type for {0} parameter", param.Name),
+                    prompt2: String.Format(@"Select item for {0} parameter", param.Name),
+                    placeholderValue: param.Name
+
+                );
+
+                if (selectedObjectsForParam.Values == null || selectedObjectsForParam.Type == null) return; //user cancelled
+                
+
+                parameterObjectsMap[param.Name] = selectedObjectsForParam;
+            }
+
+            foreach (var func in selectedFunctions)
+            {
+                string delimiter = "";
+
+                IList<string> previousList = new List<string>() { func.Name + "(" };
+                IList<string> currentList = new List<string>();
+
+                IList<string> previousListNames = new List<string>() { func.OutputNameTemplate };
+                IList<string> currentListNames = new List<string>();
+
+                IList<string> previousDestinations = new List<string>() { func.OutputDestination };
+                IList<string> currentDestinations = new List<string>();
+
+                IList<string> previousDisplayFolders = new List<string>() { func.OutputDisplayFolder };
+                IList<string> currentDisplayFolders = new List<string>();
+
+                IList<string> previousFormatStrings = new List<string>() { func.OutputFormatString };
+                IList<string> currentFormatStrings = new List<string>();
+
+                IList<string> previousOutputProperties = new List<string>() { func.OutputProperties };
+                IList<string> currentOutputProperties = new List<string>();
+
+                // When iterating the parameters of this specific function, use the mapping created for distinct parameters.
+                foreach (var param in func.Parameters)
+                {
+                    currentList = new List<string>(); //reset current list
+                    currentListNames = new List<string>();
+                    currentFormatStrings = new List<string>();
+                    currentDestinations = new List<string>();
+                    currentDisplayFolders = new List<string>();
+                    currentOutputProperties = new List<string>();
+
+                    // Retrieve the objects list for this parameter name from the map (prompting was done earlier)
+                    (IList<string> Values, string Type) paramObject;
+                    if (!parameterObjectsMap.TryGetValue(param.Name, out paramObject) || paramObject.Type == null || paramObject.Values.Count == 0)
+                    {
+                        Error(String.Format("No objects were selected earlier for parameter '{0}'.", param.Name));
+                        return;
+                    }
+
+                    for (int i = 0; i < previousList.Count; i++)
+                    {
+                        string s = previousList[i];
+                        string sName = previousListNames[i];
+                        string sFormatString = previousFormatStrings[i];
+                        string sDisplayFolder = previousDisplayFolders[i];
+                        string sDestination = previousDestinations[i];
+                        string sOutputProperties = previousOutputProperties[i];
+
+                        foreach (var o in paramObject.Values)
+                        {
+                            //extract original name and format string if the parameter is a measure
+                            string paramName = o;
+                            string paramFormatStringFull = "";
+                            string paramFormatStringRoot = "";
+                            string paramDisplayFolder = "";
+                            string paramTable = "";
+                            string paramProperties = "";
+
+                            //prepare placeholder
+                            string paramNamePlaceholder = param.Name + "Name";
+                            string paramFormatStringRootPlaceholder = param.Name + "FormatStringRoot";
+                            string paramFormatStringFullPlaceholder = param.Name + "FormatStringFull";
+                            string paramDisplayFolderPlaceholder = param.Name + "DisplayFolder";
+                            string paramPropertiesPlaceholder = param.Name + "Properties";
+                            string paramTablePlaceholder = "";
+
+
+                            if (paramObject.Type == "Measure")
+                            {
+                                Measure m = Model.AllMeasures.FirstOrDefault(m => m.DaxObjectFullName == o);
+                                paramName = m.Name;
+                                paramFormatStringFull = m.FormatString;
+                                paramDisplayFolder = m.DisplayFolder;
+                                paramTable = m.Table.DaxObjectFullName;
+                                paramProperties = m.GetAnnotation("Properties") ?? "";
+
+                                paramTablePlaceholder = param.Name + "Table";
+
+                            }
+                            else if (paramObject.Type == "Column")
+                            {
+                                Column c = Model.AllColumns.FirstOrDefault(c => c.DaxObjectFullName == o);
+                                paramName = c.Name;
+                                paramFormatStringFull = c.FormatString;
+                                paramDisplayFolder = c.DisplayFolder;
+                                paramTable = c.Table.DaxObjectFullName;
+                                paramProperties = c.GetAnnotation("Properties") ?? "";
+
+                                paramTablePlaceholder = param.Name + "Table";
+                            }
+                            else if (paramObject.Type == "Table")
+                            {
+                                Table t = Model.Tables.FirstOrDefault(t => t.DaxObjectFullName == o);
+                                paramName = t.Name;
+                                paramFormatStringFull = "";
+                                paramDisplayFolder = "";
+                                paramTable = t.DaxObjectFullName;
+                                paramProperties = t.GetAnnotation("Properties") ?? "";
+
+                                paramTablePlaceholder = param.Name;
+                            }
+
+                            if (paramFormatStringFull.Contains(";"))
+                            {
+                                //keep the first part of the format string, strip it of any + sign
+                                paramFormatStringRoot = paramFormatStringFull.Split(';')[0].Replace("+", "");
+                            }
+                            else
+                            {
+                                paramFormatStringRoot = paramFormatStringFull;
+                            }
+
+
+
+                            currentList.Add(s + delimiter + o);
+                            currentListNames.Add(sName.Replace(paramNamePlaceholder, paramName));
+
+                            currentFormatStrings.Add(
+                                sFormatString
+                                    .Replace(paramFormatStringFullPlaceholder, paramFormatStringFull)
+                                    .Replace(paramFormatStringRootPlaceholder, paramFormatStringRoot));
+
+                            currentDisplayFolders.Add(
+                                sDisplayFolder
+                                    .Replace(paramNamePlaceholder, paramName)
+                                    .Replace(paramDisplayFolderPlaceholder, paramDisplayFolder));
+
+                            currentDestinations.Add(
+                                sDestination.Replace(paramTablePlaceholder, paramTable));
+
+                            currentOutputProperties.Add(
+                                sOutputProperties
+                                    .Replace(paramNamePlaceholder, paramName)
+                                    .Replace(paramPropertiesPlaceholder, paramProperties));
+
+
+                        }
+
+
+                    }
+
+                    delimiter = ", ";
+                    previousList = currentList;
+                    previousListNames = currentListNames;
+                    previousDestinations = currentDestinations;
+                    previousDisplayFolders = currentDisplayFolders;
+                    previousFormatStrings = currentFormatStrings;
+                    previousOutputProperties = currentOutputProperties;
+                }
+
+
+
+                IList<Table> currentDestinationTables = new List<Table>();
+
+
+                if (func.OutputType == "Measure" || func.OutputType == "Column")
+                {
+                    for (int i = 0; i < currentDestinations.Count; i++)
+                    {
+
+                        //transform to actual tables, initialize if necessary
+                        Table destinationTable = Model.Tables.Where(
+                            t => t.DaxObjectFullName == currentDestinations[i])
+                            .FirstOrDefault();
+
+                        if (destinationTable == null)
+                        {
+                            destinationTable = SelectTable(preselect: null, label: $"Select destinatoin table for {func.OutputType} {currentListNames[i]}");
+                            if (destinationTable == null) return;
+                        }
+
+                        currentDestinationTables.Add(destinationTable);
+                    }
+                }
+
+
+
+                if (func.OutputType == "Measure")
+                {
+
+                    for (int i = 0; i < currentList.Count; i++)
+                    {
+
+                        //It normalizes a folder/display-folder string by collapsing repeated slashes, removing leading/trailing backslashes and trimming whitespace.
+                        string cleanCurrentDisplayFolder = Regex.Replace(currentDisplayFolders[i], @"[/]+", @"").Trim('\\').Trim();
+
+                        Measure measure = currentDestinationTables[i].AddMeasure(currentListNames[i], currentList[i] + ")");
+                        measure.FormatDax();
+                        measure.Description = String.Format("Measure created with {0} function. Check function for details.", func.Name);
+                        measure.DisplayFolder = cleanCurrentDisplayFolder;
+                        measure.FormatString = currentFormatStrings[i];
+
+                        // Set Properties annotation with the transformed outputProperties value
+                        if (!string.IsNullOrEmpty(currentOutputProperties[i]))
+                        {
+                            measure.SetAnnotation("Properties", currentOutputProperties[i]);
+                        }
+                    }
+
+                }
+                else if (func.OutputType == "Column")
+                {
+
+                    for (int i = 0; i < currentList.Count; i++)
+                    {
+
+                        //It normalizes a folder/display-folder string by collapsing repeated slashes, removing leading/trailing backslashes and trimming whitespace.
+                        string cleanCurrentDisplayFolder = Regex.Replace(currentDisplayFolders[i], @"[/]+", @"").Trim('\\').Trim();
+
+                        Column column = currentDestinationTables[i].AddCalculatedColumn(currentListNames[i], currentList[i] + ")");
+                        //column.FormatDax();
+                        column.Description = String.Format("Column created with {0} function. Check function for details.", func.Name);
+                        column.DisplayFolder = cleanCurrentDisplayFolder;
+                        column.FormatString = currentFormatStrings[i];
+
+                        // Set Properties annotation with the transformed outputProperties value
+                        if (!string.IsNullOrEmpty(currentOutputProperties[i]))
+                        {
+                            column.SetAnnotation("Properties", currentOutputProperties[i]);
+                        }
+                    }
+
+                }
+                else
+                {
+                    Info("Not implemented yet for output types other than Measure.");
+                }
+            }
+
+
+
+        }
+
+
+
+        void createFieldParameter()
+        {
+            //#r "Microsoft.VisualBasic"
+            //using Microsoft.VisualBasic;
+
+            //99% comes from Daniel Otykier --> https://github.com/TabularEditor/TabularEditor3/issues/541#issuecomment-1129228481
+            //1% B.Agullo --> pop-up to choose parameter name. 
+
+            // Before running the script, select the measures or columns that you
+            // would like to use as field parameters (hold down CTRL to select multiple
+            // objects). Also, you may change the name of the field parameter table
+            // below. NOTE: If used against Power BI Desktop, you must enable unsupported
+            // features under File > Preferences (TE2) or Tools > Preferences (TE3).
+            var name = Interaction.InputBox("Provide the name for the field parameter", "Parameter name", "Parameter");
+
+            if (Selected.Columns.Count == 0 && Selected.Measures.Count == 0) throw new Exception("No columns or measures selected!");
+
+            // Get objects collection
+            var objects = Selected.Columns.Any() ? Selected.Columns.Cast<ITabularTableObject>() : Selected.Measures;
+
+            // Retrieve Properties annotations and split them by pipe delimiter
+            var objectPropertiesLists = new List<List<string>>();
+            
+            foreach (var obj in objects)
+            {
+                string propertiesAnnotation = "";
+                if (obj is Measure)
+                {
+                    propertiesAnnotation = ((Measure)obj).GetAnnotation("Properties") ?? "";
+                }
+                else if (obj is Column)
+                {
+                    propertiesAnnotation = ((Column)obj).GetAnnotation("Properties") ?? "";
+                }
+
+                var propertiesList = string.IsNullOrEmpty(propertiesAnnotation) 
+                    ? new List<string>() 
+                    : propertiesAnnotation.Split('|').ToList();
+                
+                objectPropertiesLists.Add(propertiesList);
+            }
+
+            // Find maximum length to normalize all lists
+            int maxPropertiesCount = objectPropertiesLists.Any() ? objectPropertiesLists.Max(pl => pl.Count) : 0;
+
+            // Normalize all lists to the same length by adding empty strings
+            for (int i = 0; i < objectPropertiesLists.Count; i++)
+            {
+                while (objectPropertiesLists[i].Count < maxPropertiesCount)
+                {
+                    objectPropertiesLists[i].Add("");
+                }
+            }
+
+            // Construct the DAX for the calculated table based on the current selection:
+            string dax = "";
+            if (maxPropertiesCount > 0)
+            {
+                // Build DAX with additional property columns
+                var daxRows = objects.Select((c, i) =>
+                {
+                    var baseValues = string.Format("\"{0}\", NAMEOF('{1}'[{0}]), {2}", c.Name, c.Table.Name, i);
+                    var propertyValues = string.Join(", ", objectPropertiesLists[i].Select(p => string.Format("\"{0}\"", p)));
+                    return string.Format("({0}, {1})", baseValues, propertyValues);
+                });
+                
+                dax = "{\n    " + string.Join(",\n    ", daxRows) + "\n}";
+            }
+            else
+            {
+                // No properties found, use original format
+                dax = "{\n    " + string.Join(",\n    ", objects.Select((c, i) => string.Format("(\"{0}\", NAMEOF('{1}'[{0}]), {2})", c.Name, c.Table.Name, i))) + "\n}";
+            }
+
+            // Add the calculated table to the model:
+            var table = Model.AddCalculatedTable(name, dax);
+
+            // In TE2 columns are not created automatically from a DAX expression, so 
+            // we will have to add them manually:
+            var te2 = table.Columns.Count == 0;
+            var nameColumn = te2 ? table.AddCalculatedTableColumn(name, "[Value1]") : table.Columns["Value1"] as CalculatedTableColumn;
+            var fieldColumn = te2 ? table.AddCalculatedTableColumn(name + " Fields", "[Value2]") : table.Columns["Value2"] as CalculatedTableColumn;
+            var orderColumn = te2 ? table.AddCalculatedTableColumn(name + " Order", "[Value3]") : table.Columns["Value3"] as CalculatedTableColumn;
+
+            // Create additional columns for each property level
+            var propertyColumns = new List<CalculatedTableColumn>();
+            for (int i = 0; i < maxPropertiesCount; i++)
+            {
+                int valueIndex = 4 + i; // Value4, Value5, etc.
+                string columnName = name + " Property" + (i + 1);
+                var propColumn = te2 
+                    ? table.AddCalculatedTableColumn(columnName, "[Value" + valueIndex + "]") 
+                    : table.Columns["Value" + valueIndex] as CalculatedTableColumn;
+                
+                if (!te2)
+                {
+                    propColumn.IsNameInferred = false;
+                    propColumn.Name = columnName;
+                }
+                
+                propertyColumns.Add(propColumn);
+            }
+
+            if (!te2)
+            {
+                // Rename the columns that were added automatically in TE3:
+                nameColumn.IsNameInferred = false;
+                nameColumn.Name = name;
+                fieldColumn.IsNameInferred = false;
+                fieldColumn.Name = name + " Fields";
+                orderColumn.IsNameInferred = false;
+                orderColumn.Name = name + " Order";
+            }
+            
+            // Set remaining properties for field parameters to work
+            // See: https://twitter.com/markbdi/status/1526558841172893696
+            nameColumn.SortByColumn = orderColumn;
+            nameColumn.GroupByColumns.Add(fieldColumn);
+            fieldColumn.SortByColumn = orderColumn;
+            fieldColumn.SetExtendedProperty("ParameterMetadata", "{\"version\":3,\"kind\":2}", ExtendedPropertyType.Json);
+            fieldColumn.IsHidden = true;
+            orderColumn.IsHidden = true;
+        }
         void applyCalcGroupsFormatExpression()
         {
             //this script only executes in TE3
@@ -319,10 +988,6 @@ namespace TE_Scripting
 
 
         }
-
-
-
-
         void applyCalcGroups()
         {
             //this script only executes in TE3
@@ -516,12 +1181,6 @@ namespace TE_Scripting
 
 
         }
-
-
-        
-
-
-
         void evaluatedDax()
         {
 
@@ -824,7 +1483,6 @@ namespace TE_Scripting
 
             //Info("Expansion complete. Result saved to: " + tempFile);
         }
-        
         void disableAutoDateTime()
         {
 
@@ -978,7 +1636,6 @@ namespace TE_Scripting
 
             Output(String.Format("Updated {0} display names in {1} visuals of the report.", updatedCount, visualsUpdated));
         }
-
         void storeDisplayNames()
         {
             //using GeneralFunctions;
@@ -1178,8 +1835,6 @@ namespace TE_Scripting
 
             Output(String.Format("Updated {0} measures and {1} columns with DisplayName annotations.", measuresUpdated, columnsUpdated));
         }
-
-
         void copyConditionalFormatting()
         {
 
@@ -1306,8 +1961,6 @@ namespace TE_Scripting
             Rx.SaveVisual(selectedVisual);
             Output(String.Format(@"{0} headers updated with formatting from '{1}'.", updatedCount, sourceHeader));
         }
-
-
         void adjustLineOverColumns()
         {
             //using GeneralFunctions;
@@ -1722,7 +2375,6 @@ namespace TE_Scripting
                 + "' has been modified. Close and reopen the report to see the changes"); 
 
         }
-
         void createTimeIntelFunctions()
         {
             //using GeneralFunctions;
@@ -1924,315 +2576,7 @@ namespace TE_Scripting
 
 
         }
-
-        void SingleMeasureParameterFunction()
-        {
-
-            //2025-09-26/B.Agullo/ fixed bug that would not store annotations if initialized during runtime
-            //2025-09-16/B.Agullo/
-            //Creates measures based on DAX UDFs 
-            //Check the blog post for futher information: https://www.esbrina-ba.com/automatically-create-measures-with-dax-user-defined-functions/
-
-            //using GeneralFunctions;
-            //using DaxUserDefinedFunction;
-            //using System.Text.RegularExpressions;
-
-#if TE3
-            ScriptHelper.WaitFormVisible = false;
-#endif
-
-            // PSEUDOCODE / PLAN:
-            // 1. Verify that the user has selected one or more functions (Selected.Functions).
-            // 2. If none selected, show error and abort.
-            // 3. Create FunctionExtended objects for each selected function and keep them in a list.
-            // 4. Extract all parameters from the selected functions and build a distinct list by name.
-            // 5. For each distinct parameter name:
-            //      - Prompt the user once with Fx.SelectAnyObjects to choose the objects to iterate for that parameter.
-            //      - If the user cancels or selects nothing, abort the whole operation.
-            //      - Store the resulting IList<string> in a dictionary keyed by parameter name so it can be retrieved later.
-            // 6. Example usage: create a sample FunctionExtended (as the original example does),
-            //    then when iterating the function parameters use the previously built dictionary to obtain the list
-            //    of objects for each parameter name (do not prompt again).
-            // 7. Build measure names/expressions by iterating the parameter-object combinations and create measures.
-            //
-            // NOTES:
-            // - All Fx.SelectAnyObjects calls must use parameter names on the call.
-            // - The dictionary is Dictionary<string, IList<string>> parameterObjectsMap.
-            // - Abort execution if any required selection is cancelled.
-
-            // Validate selection
-            if (Selected.Functions.Count() == 0)
-            {
-                Error("Select one or more functions and try again.");
-                return;
-            }
-
-            // Create FunctionExtended objects for each selected function and store them for later iteration
-            IList<FunctionExtended> selectedFunctions = new List<FunctionExtended>();
-
-            foreach (var f in Selected.Functions)
-            {
-                // Create the FunctionExtended and add to list
-                FunctionExtended fe = FunctionExtended.CreateFunctionExtended(f);
-                selectedFunctions.Add(fe);
-            }
-
-            // Flatten all parameters from selected functions
-            var allParametersFlat = selectedFunctions
-                .SelectMany(sf => sf.Parameters ?? new List<FunctionParameter>())
-                .ToList();
-            
-            // Build distinct FunctionParameter objects (first occurrence per name)
-            IList<FunctionParameter> distinctParameters = allParametersFlat
-                .GroupBy(p => p.Name)
-                .Select(g => g.First())
-                .ToList();
-
-            // For each distinct parameter, ask the user once which objects should be iterated and store mapping
-            
-            var parameterObjectsMap = new Dictionary<string, (IList<string> Values, string Type)>();
-            foreach (var param in distinctParameters)
-            {
-                string selectionType = null;
-                if (param.Name.ToUpper().Contains("MEASURE"))
-                {
-                    selectionType = "Measure";
-                }
-                else if (param.Name.ToUpper().Contains("COLUMN"))
-                {
-                    selectionType = "Column";
-                }
-                else if (param.Name.ToUpper().Contains("TABLE"))
-                {
-                    selectionType = "Table";
-                }
-
-
-                (IList<string> Values,string Type) selectedObjectsForParam = Fx.SelectAnyObjects(
-                    Model,
-                    selectionType: selectionType,
-                    prompt1: String.Format(@"Select object type for {0} parameter", param.Name),
-                    prompt2: String.Format(@"Select item for {0} parameter", param.Name),
-                    placeholderValue: param.Name
-
-                );
-
-                if (selectedObjectsForParam.Type == null || selectedObjectsForParam.Values.Count == 0)
-                {
-                    Info(String.Format("No objects selected for parameter '{0}'. Operation cancelled.", param.Name));
-                    return;
-                }
-
-                parameterObjectsMap[param.Name] = selectedObjectsForParam;
-            }
-
-            foreach (var func in selectedFunctions)
-            {
-                string delimiter = "";
-
-                IList<string> previousList = new List<string>() { func.Name + "(" };
-                IList<string> currentList = new List<string>();
-
-                IList<string> previousListNames = new List<string>() { func.OutputNameTemplate };
-                IList<string> currentListNames = new List<string>();
-                
-                IList<string> previousDestinations = new List<string>() { func.OutputDestination };
-                IList<string> currentDestinations = new List<string>();
-
-                IList<string> previousDisplayFolders = new List<string>() { func.OutputDisplayFolder };
-                IList<string> currentDisplayFolders = new List<string>();
-
-                IList<string> previousFormatStrings = new List<string>() { func.OutputFormatString };
-                IList<string> currentFormatStrings = new List<string>();
-
-                // When iterating the parameters of this specific function, use the mapping created for distinct parameters.
-                foreach (var param in func.Parameters)
-                {
-                    currentList = new List<string>(); //reset current list
-                    currentListNames = new List<string>();
-                    currentFormatStrings = new List<string>();
-                    currentDestinations = new List<string>();
-                    currentDisplayFolders = new List<string>();
-
-                    // Retrieve the objects list for this parameter name from the map (prompting was done earlier)
-                    (IList<string> Values, string Type) paramObject;
-                    if (!parameterObjectsMap.TryGetValue(param.Name, out paramObject) || paramObject.Type == null || paramObject.Values.Count == 0)
-                    {
-                        Error(String.Format("No objects were selected earlier for parameter '{0}'.", param.Name));
-                        return;
-                    }
-
-                    for (int i = 0; i < previousList.Count; i++)
-                    {
-                        string s = previousList[i];
-                        string sName = previousListNames[i];
-                        string sFormatString = previousFormatStrings[i];
-                        string sDisplayFolder = previousDisplayFolders[i];
-                        string sDestination = previousDestinations[i];
-
-                        foreach (var o in paramObject.Values)
-                        {
-                            //extract original name and format string if the parameter is a measure
-                            string paramName = o;
-                            string paramFormatStringFull = "";
-                            string paramFormatStringRoot = "";
-                            string paramDisplayFolder = "";
-                            string paramTable = "";
-
-                            //prepare placeholder
-                            string paramNamePlaceholder = param.Name + "Name";
-                            string paramFormatStringRootPlaceholder = param.Name + "FormatStringRoot";
-                            string paramFormatStringFullPlaceholder = param.Name + "FormatStringFull";
-                            string paramDisplayFolderPlaceholder = param.Name + "DisplayFolder";
-                            string paramTablePlaceholder = "";
-
-
-                            if (paramObject.Type == "Measure")
-                            {
-                                Measure m = Model.AllMeasures.FirstOrDefault(m => m.DaxObjectFullName == o);
-                                paramName = m.Name;
-                                paramFormatStringFull = m.FormatString;
-                                paramDisplayFolder = m.DisplayFolder;
-                                paramTable = m.Table.DaxObjectFullName;
-
-                                paramTablePlaceholder = param.Name + "Table";
-
-                            }
-                            else if (paramObject.Type == "Column")
-                            {
-                                Column c = Model.AllColumns.FirstOrDefault(c => c.DaxObjectFullName == o);
-                                paramName = c.Name;
-                                paramFormatStringFull = c.FormatString;
-                                paramDisplayFolder = c.DisplayFolder;
-                                paramTable = c.Table.DaxObjectFullName;
-
-                                paramTablePlaceholder = param.Name + "Table";
-                            }
-                            else if (paramObject.Type == "Table")
-                            {
-                                Table t = Model.Tables.FirstOrDefault(t => t.DaxObjectFullName == o);
-                                paramName = t.Name;
-                                paramFormatStringFull = "";
-                                paramDisplayFolder = "";
-                                paramTable = t.DaxObjectFullName;
-
-                                paramTablePlaceholder = param.Name;
-                            }
-
-                            if (paramFormatStringFull.Contains(";"))
-                            {
-                                //keep the first part of the format string, strip it of any + sign
-                                paramFormatStringRoot = paramFormatStringFull.Split(';')[0].Replace("+","");
-                            }
-                            else
-                            {
-                                paramFormatStringRoot = paramFormatStringFull;
-                            }
-
-                            
-
-                            currentList.Add(s + delimiter + o);
-                            currentListNames.Add(sName.Replace(paramNamePlaceholder, paramName));
-                            
-                            currentFormatStrings.Add(
-                                sFormatString
-                                    .Replace(paramFormatStringFullPlaceholder, paramFormatStringFull)
-                                    .Replace(paramFormatStringRootPlaceholder, paramFormatStringRoot));
-
-                            currentDisplayFolders.Add(
-                                sDisplayFolder
-                                    .Replace(paramNamePlaceholder, paramName)
-                                    .Replace(paramDisplayFolderPlaceholder, paramDisplayFolder));
-
-                            currentDestinations.Add(
-                                sDestination.Replace(paramTablePlaceholder, paramTable));
-
-
-                        }
-
-                        
-                    }
-
-                    delimiter = ", ";
-                    previousList = currentList;
-                    previousListNames = currentListNames;
-                    previousDestinations = currentDestinations;
-                    previousDisplayFolders = currentDisplayFolders;
-                    previousFormatStrings = currentFormatStrings;
-                }
-
-
-
-                IList<Table> currentDestinationTables = new List<Table>();
-
-
-                if(func.OutputType == "Measure" || func.OutputType == "Column")
-                {
-                    for (int i = 0; i < currentDestinations.Count; i++)
-                    {
-
-                        //transform to actual tables, initialize if necessary
-                        Table destinationTable = Model.Tables.Where(
-                            t => t.DaxObjectFullName == currentDestinations[i])
-                            .FirstOrDefault();
-
-                        if (destinationTable == null)
-                        {
-                            destinationTable = SelectTable(preselect: null, label: $"Select destinatoin table for {func.OutputType} {currentListNames[i]}");
-                            if (destinationTable == null) return;
-                        }
-
-                        currentDestinationTables.Add(destinationTable);
-                    }
-                }
-
-
-
-                if (func.OutputType == "Measure")
-                {
-                    
-                    for (int i = 0; i < currentList.Count; i++)
-                    {
-
-                        //It normalizes a folder/display-folder string by collapsing repeated slashes, removing leading/trailing backslashes and trimming whitespace.
-                        string cleanCurrentDisplayFolder = Regex.Replace(currentDisplayFolders[i], @"[/]+", @"").Trim('\\').Trim();
-                        
-                        Measure measure = currentDestinationTables[i].AddMeasure(currentListNames[i], currentList[i] + ")");
-                        measure.FormatDax();
-                        measure.Description = String.Format("Measure created with {0} function. Check function for details.", func.Name);
-                        measure.DisplayFolder = cleanCurrentDisplayFolder;
-                        measure.FormatString = currentFormatStrings[i];
-                    }
-
-                }
-                else if (func.OutputType == "Column") 
-                {
-
-                    for (int i = 0; i < currentList.Count; i++)
-                    {
-
-                        //It normalizes a folder/display-folder string by collapsing repeated slashes, removing leading/trailing backslashes and trimming whitespace.
-                        string cleanCurrentDisplayFolder = Regex.Replace(currentDisplayFolders[i], @"[/]+", @"").Trim('\\').Trim();
-
-                        Column column = currentDestinationTables[i].AddCalculatedColumn(currentListNames[i], currentList[i] + ")");
-                        //column.FormatDax();
-                        column.Description = String.Format("Column created with {0} function. Check function for details.", func.Name);
-                        column.DisplayFolder = cleanCurrentDisplayFolder;
-                        column.FormatString = currentFormatStrings[i];
-                    }
-
-                }
-                else
-                {
-                    Info("Not implemented yet for output types other than Measure.");
-                }
-            }
-
-            
-
-        }
-
-
+        
         void copyHeaderFormatting()
         {
 
