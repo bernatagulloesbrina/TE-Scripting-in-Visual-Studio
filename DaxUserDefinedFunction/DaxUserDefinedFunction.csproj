@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <Reference Include="TabularEditor">
-      <HintPath>C:\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Tabular Editor\TabularEditor.exe</HintPath>
     </Reference>
   </ItemGroup>
 

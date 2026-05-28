@@ -39,10 +39,285 @@ namespace TE_Scripting
     {
 
 
+        void referentialIntegrity()
+        {
+
+            //Select the desired table to store all data quality measures
+            //See https://www.esbrina-ba.com/easy-management-of-referential-integrity/
+
+            // 2026-02-20 / B.Agulló / GetSelectedTable to use without creating first the calc table
+            // 2024-07-13 / B.Agulló / Add annotations for the report-layer script, possible to execute without selected table, subtitles measures
+            // 2023-12-22 / B.Agulló / Added suggestions by Ed Hansberry 
+            // 2023-02-15 / B.Agulló / Added useRelationship in the expression to check also inactive relationships
+
+            // Instructions:
+            // Select the desired table  to store all data quality measures
+            // or execute just on the model and a new table will be created for you
+            //
+            // See https://www.esbrina-ba.com/easy-management-of-referential-integrity/
+            //
+            // To create the report sheet check out:
+            // https://www.esbrina-ba.com/building-a-referential-integrity-report-page-with-a-c-script/
+
+            //change the resulting variable names if you want
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+
+            string overallCounterName = "Total Unmapped Items";
+            string overallDetailName = "Data Problems";
+            string targetTableNameIfCreated = "Referential Integrity";
+            //do not modify the script below
+            string overallCounterExpression = "";
+            string overallDetailExpression = "\"\"";
+            string annLabel = "ReferencialIntegrityMeasures";
+            string annValueTotal = "TotalUnmappedItems";
+            string annValueDetail = "DataProblems";
+            string annValueDataQualityMeasures = "DataQualityMeasure";
+            string annValueDataQualityTitles = "DataQualityTitle";
+            string annValueDataQualitySubtitles = "DataQualitySubitle";
+            string annValueFactColumn = "FactColumn";
+            Table tableToStoreMeasures = null as Table;
+            if (Selected.Tables.Count() == 0)
+            {
+                tableToStoreMeasures = Model.AddCalculatedTable(targetTableNameIfCreated, "{0}");
+            }
+            else
+            {
+                tableToStoreMeasures = Selected.Tables.First();
+            }
+            int measureIndex = 0;
+            foreach (var r in Model.Relationships)
+            {
+                bool isOneToMany =
+                    r.FromCardinality == RelationshipEndCardinality.One
+                    && r.ToCardinality == RelationshipEndCardinality.Many;
+                bool isManyToOne =
+                    r.FromCardinality == RelationshipEndCardinality.Many
+                    && r.ToCardinality == RelationshipEndCardinality.One;
+                Column manyColumn = null as Column;
+                Column oneColumn = null as Column;
+                bool isOneToManyOrManyToOne = true;
+                if (isOneToMany)
+                {
+                    manyColumn = r.ToColumn;
+                    oneColumn = r.FromColumn;
+                }
+                else if (isManyToOne)
+                {
+                    manyColumn = r.FromColumn;
+                    oneColumn = r.ToColumn;
+                }
+                else
+                {
+                    isOneToManyOrManyToOne = false;
+                }
+                if (isOneToManyOrManyToOne)
+                {
+                    measureIndex++; //increment index
+                                    //add measure counting how many different items in the fact table are not present in the dimension
+                    string orphanCountExpression =
+                        "CALCULATE("
+                            + "SUMX(VALUES(" + manyColumn.DaxObjectFullName + "),1),"
+                            + "ISBLANK(" + oneColumn.DaxObjectFullName + "),"
+                            + "USERELATIONSHIP(" + manyColumn.DaxObjectFullName + "," + oneColumn.DaxObjectFullName + "),"
+                            + "ALLEXCEPT(" + manyColumn.Table.DaxObjectFullName + "," + manyColumn.DaxObjectFullName + ")"
+                        + ")";
+                    string orphanMeasureName =
+                        manyColumn.Name + " not mapped in " + manyColumn.Table.Name;
+                    Measure newCounter = tableToStoreMeasures.AddMeasure(name: orphanMeasureName, expression: orphanCountExpression, displayFolder: "_Data quality Measures");
+                    newCounter.FormatString = "#,##0";
+                    newCounter.FormatDax();
+                    newCounter.SetAnnotation(annLabel, annValueDataQualityMeasures + "_" + measureIndex.ToString());
+                    //add annotation to trace back the fact table when building the report
+                    manyColumn.SetAnnotation(annLabel, annValueFactColumn + "_" + measureIndex.ToString());
+                    //add measure saying how many are not mapped in the fact table
+                    string orphanTableTitleMeasureExpression = "FORMAT(" + newCounter.DaxObjectFullName + "+0,\"" + newCounter.FormatString + "\") & \" " + newCounter.Name + "\"";
+                    string orphanTableTitleMeasureName = newCounter.Name + " Title";
+                    Measure newTitle = tableToStoreMeasures.AddMeasure(name: orphanTableTitleMeasureName, expression: orphanTableTitleMeasureExpression, displayFolder: "_Data quality Titles");
+                    newTitle.FormatDax();
+                    newTitle.SetAnnotation(annLabel, annValueDataQualityTitles + "_" + measureIndex.ToString());
+                    //add measure for subtitle saying how many need to be added to the dimension table
+                    string orphanTableSubtitleMeasureExpression =
+                        String.Format(
+                            @"FORMAT({0}+0,""{1}"") & "" values missing in "" & ""{2}""",
+                            newCounter.DaxObjectFullName,
+                            newCounter.FormatString,
+                            oneColumn.Table.Name);
+                    string orphanTableSubitleMeasureName = newCounter.Name + " Subtitle";
+                    Measure newSubtitle = tableToStoreMeasures.AddMeasure(name: orphanTableSubitleMeasureName, expression: orphanTableSubtitleMeasureExpression, displayFolder: "_Data quality Subtitles");
+                    newSubtitle.FormatDax();
+                    newSubtitle.SetAnnotation(annLabel, annValueDataQualitySubtitles + "_" + measureIndex.ToString());
+                    overallCounterExpression = overallCounterExpression + "+" + newCounter.DaxObjectFullName;
+                    overallDetailExpression = overallDetailExpression
+                            + " & IF(" + newCounter.DaxObjectFullName + "> 0,"
+                                        + newTitle.DaxObjectFullName + " & UNICHAR(10))";
+                }
+                ;
+            }
+            ;
+            Measure counter = tableToStoreMeasures.AddMeasure(name: overallCounterName, expression: overallCounterExpression);
+            counter.FormatString = "#,##0";
+            counter.FormatDax();
+            counter.SetAnnotation(annLabel, annValueTotal);
+            Measure descr = tableToStoreMeasures.AddMeasure(name: overallDetailName, expression: overallDetailExpression);
+            descr.FormatDax();
+            descr.SetAnnotation(annLabel, annValueDetail);
+
+        }
+
+        void createFilteredMeasures()
+        {
+            // 2026-05-06 / B.Agullo / fixed null-reference bug
+            //  2026-03-29 / B.Agullo / added support for propertyNames annotation
+            // '2026-03-20 / B.Agullo / added template for name, displayfolder, description and properties annotation
+            // '2026-02-20 / B.Agullo / added properties annotation for fieldParameter and dynamic measure creation
+            // '2022-05-21 / B.Agullo / 
+            // FILTERED MEASURES BY COLUMN VALUES SCRIPT 
+            // creates a measure for each of the values in a column filtering the selected base measure
+            // step by step instructions at https://www.esbrina-ba.com/creating-filtered-measures-or-how-to-show-the-total-along-with-the-detail-in-a-chart/
+
+            //using GeneralFunctions;
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
+            var measures = Selected.Measures;
+
+            if (measures.Count == 0)
+            {
+                Error("Select one or more measures");
+            }
+
+            Table table = SelectTable();
+            if(table == null) 
+            {
+                Error("Select a table");
+                return;
+            }
+            Column column = SelectColumn(table);
+            if(column == null)
+            {
+                Error("Select a column");
+                return;
+            }
+
+            string measureNameTemplate = Fx.GetNameFromUser("Enter measure name template. You can use measureName, columnName, columnValue in the expression","template","measureName - columnValue");
+            if (string.IsNullOrEmpty(measureNameTemplate)) return;
+            
+            string measureNameReplaceExpression = 
+                measureNameTemplate
+                    .Replace("measureName", "{0}")
+                    .Replace("columnName", "{1}")
+                    .Replace("columnValue", "{2}");
+            
+            string measureDescriptionTemplate = Fx.GetNameFromUser("Enter measure description template. You can use measureName, columnName, columnValue in the expression","template","measureName filtered by columnName = columnValue");
+            if(string.IsNullOrEmpty(measureDescriptionTemplate)) return;
+
+            string measureDescriptionReplaceExpression = 
+                measureDescriptionTemplate
+                    .Replace("measureName", "{0}")
+                    .Replace("columnName", "{1}")
+                    .Replace("columnValue", "{2}");
+
+            string displayFolderTemplate = Fx.GetNameFromUser("Enter display folder template. You can use measureName, columnName, columnValue in the expression","template","measureName - columnName");
+            if(string.IsNullOrEmpty(displayFolderTemplate)) return;
+
+            string displayFolderReplaceExpression = 
+                displayFolderTemplate
+                    .Replace("measureName", "{0}")
+                    .Replace("columnName", "{1}")
+                    .Replace("columnValue","{2}");
+
+            
+
+            string propertiesAnnotationTemplate = Fx.GetNameFromUser("Enter properties annotation template. You can use measureName, measureProperties, columnName, columnValue in the expression","template","measureName|columnName|columnValue");
+            if(string.IsNullOrEmpty(propertiesAnnotationTemplate)) return;
+
+            string propertiesAnnotationReplaceExpression = 
+                propertiesAnnotationTemplate
+                    .Replace("measureName", "{0}")
+                    .Replace("measureProperties", "{1}")
+                    .Replace("columnName", "{2}")
+                    .Replace("columnValue", "{3}");
+
+            string query = "EVALUATE DISTINCT(" + column.DaxObjectFullName + ")";
+
+            using (var reader = Model.Database.ExecuteReader(query))
+            {
+                // Create a loop for every row in the resultset
+                while (reader.Read())
+                {
+                    var rawValue = reader.GetValue(0);
+                    if (rawValue == null || rawValue == DBNull.Value) continue;
+                    string columnValue = rawValue.ToString();
+
+                    string formulaColumnValue = columnValue;
+
+                    
+
+
+                    if (column.DataType.Equals(DataType.String))
+                    {
+                        formulaColumnValue = "\"" + columnValue + "\"";
+                    }
+
+
+                    foreach (Measure measure in measures)
+                    {
+                        string measureName = string.Format(measureNameReplaceExpression, measure.Name, column.Name, columnValue);
+                        string measureExpression =
+                            string.Format("CALCULATE({0},{1}={2})",
+                                measure.DaxObjectName,
+                                column.DaxObjectFullName,
+                                formulaColumnValue
+                            );
+                        string measureDescription =
+                            string.Format(measureDescriptionReplaceExpression,
+                                measure.Name,
+                                column.Name,
+                                columnValue
+                           );
+                        string displayFolderName =
+                            string.Format(displayFolderReplaceExpression,
+                                measure.Name,
+                                column.Name,
+                                columnValue
+                            );
+
+                        string propertiesAnnotation =
+                            string.Format(propertiesAnnotationReplaceExpression,
+                                measure.Name,
+                                measure.GetAnnotation("Properties") ?? "",
+                                column.Name,
+                                columnValue
+                            );
+
+                        Measure newMeasure =
+                            measure.Table.AddMeasure(
+                                name: measureName,
+                                expression: measureExpression,
+                                displayFolder: displayFolderName
+                            );
+                        newMeasure.Description = measureDescription;
+                        newMeasure.FormatDax();
+                        newMeasure.FormatString = measure.FormatString;
+                        newMeasure.SetAnnotation("Properties", propertiesAnnotation);
+                        newMeasure.SetAnnotation("PropertyNames", propertiesAnnotationTemplate);
+
+                    }
+                }
+            }
+        }
         void createDynamicMeasure()
         {
             //using GeneralFunctions;
-
+            // 2026-05-30 / B.Agullo / FormatString values with embedded double-quotes are now escaped (doubled) when written into a DAX string literal
+            // 2026-05-30 / B.Agullo / Fixed missing comma between SWITCH condition and its result value in all generated DAX expressions
+            // 2026-05-30 / B.Agullo / PropertyNames with spaces are now sanitised (spaces removed) before use as DAX variable names; display names are unchanged
+            // 2026-04-23 / B.Agullo /  semidynamic measures have also propertyNames annotation
+            // 2026-04-22 / B.Agullo / improvements in the disconnected tables, with distinct key and display values if needed. 
+            // 2026-03-29 / B.Agullo / added support for propertyNames annotation
             // 2025-01-07 / B.Agullo
             // Creates a dynamic measure and disconnected tables based on Properties annotations of selected measures.
             // Each property position gets its own disconnected table with distinct values across all measures.
@@ -51,6 +326,9 @@ namespace TE_Scripting
 #if TE3
             ScriptHelper.WaitFormVisible = false;
 #endif
+
+            // Configuration: Prefix for disconnected tables (to group them together in Power BI Desktop)
+            string tablePrefix = "Selection ";
 
             // Validate selection
             if (Selected.Measures.Count() < 2)
@@ -91,19 +369,108 @@ namespace TE_Scripting
                 return;
             }
 
-            // Step 4: Ask user for dynamic measure name
+            // Step 3.5: Retrieve PropertyNames annotations from selected measures
+            var propertyNamesAnnotations = new List<string>();
+            foreach (var measure in Selected.Measures)
+            {
+                string propertyNamesAnnotation = measure.GetAnnotation("PropertyNames") ?? "";
+                
+                if (!string.IsNullOrEmpty(propertyNamesAnnotation))
+                {
+                    propertyNamesAnnotations.Add(propertyNamesAnnotation);
+                }
+            }
+
+            // Determine property names for disconnected tables and variables
+            List<string> propertyNames = new List<string>();
+            
+            if (propertyNamesAnnotations.Count > 0)
+            {
+                // Get distinct PropertyNames values
+                var distinctPropertyNames = propertyNamesAnnotations.Distinct().ToList();
+                
+                if (distinctPropertyNames.Count == 1)
+                {
+                    // All PropertyNames are the same, use them
+                    propertyNames = distinctPropertyNames[0].Split('|').ToList();
+                }
+                else
+                {
+                    // Different PropertyNames found, let user choose
+                    var optionsWithDefine = distinctPropertyNames.ToList();
+                    optionsWithDefine.Add("<Define now>");
+                    
+                    string chosenPropertyNames = Fx.ChooseString(
+                        OptionList: optionsWithDefine,
+                        label: "Different PropertyNames found. Choose one or define new:"
+                    );
+                    
+                    if (string.IsNullOrEmpty(chosenPropertyNames)) return;
+                    
+                    if (chosenPropertyNames == "<Define now>")
+                    {
+                        // Show input box with first PropertyNames as default
+                        chosenPropertyNames = Fx.GetNameFromUser(
+                            Prompt: "Enter property names (pipe-separated):",
+                            Title: "Property Names",
+                            DefaultResponse: distinctPropertyNames[0]
+                        );
+                        
+                        if (string.IsNullOrEmpty(chosenPropertyNames)) return;
+                    }
+                    
+                    propertyNames = chosenPropertyNames.Split('|').ToList();
+                }
+            }
+            else
+            {
+                // No PropertyNames found, ask one by one
+                for (int i = 0; i < propertyCount; i++)
+                {
+                    // Collect distinct values for this property position (up to 3)
+                    var sampleValues = measuresWithProperties
+                        .Select(m => m.properties[i])
+                        .Distinct()
+                        .Take(3)
+                        .ToList();
+                    
+                    string sampleText = sampleValues.Count > 0 
+                        ? String.Format(" (found values: '{0}')", string.Join("', '", sampleValues))
+                        : "";
+                    
+                    string propertyName = Fx.GetNameFromUser(
+                        Prompt: String.Format("Enter name for property {0}{1}:", i + 1, sampleText),
+                        Title: "Property Name",
+                        DefaultResponse: String.Format("Property{0}", i + 1)
+                    );
+                    
+                    if (string.IsNullOrEmpty(propertyName)) return;
+                    
+                    propertyNames.Add(propertyName);
+                }
+            }
+
+            // Step 4: Ask user for dynamic measure name with smart default based on PropertyNames
+            string defaultDynamicMeasureName = propertyNames.Count > 0
+                ? "Dynamic Measure " + string.Join(" ", propertyNames)
+                : "Dynamic Measure";
+            
             string dynamicMeasureName = Fx.GetNameFromUser(
                 Prompt: "Enter the name for the dynamic measure:",
                 Title: "Dynamic Measure Name",
-                DefaultResponse: "Dynamic Measure"
+                DefaultResponse: defaultDynamicMeasureName
             );
             if (dynamicMeasureName == null) return;
+
+            // DAX variable names cannot contain spaces – strip them from propertyNames
+            List<string> daxSafePropertyNames = propertyNames.Select(p => p.Replace(" ", "")).ToList();
 
             // Step 5: Get destination table (use first measure's table)
             Table destinationTable = measuresWithProperties[0].measure.Table;
 
             // Step 6: Create disconnected tables for each property position
             var propertyTables = new List<Table>();
+            var columnBaseNames = new List<string>();
             
             for (int i = 0; i < propertyCount; i++)
             {
@@ -114,14 +481,15 @@ namespace TE_Scripting
                     .OrderBy(v => v)
                     .ToList();
 
-                // Create table name
-                string tableName = String.Format("Property{0}", i + 1);
+                // Create table name with prefix and column base name without prefix
+                string columnBaseName = propertyNames.Count > i ? propertyNames[i] : String.Format("Property{0}", i + 1);
+                string tableName = tablePrefix + columnBaseName;
                 
-                // Build DAX expression for calculated table
+                // Build DAX expression for calculated table with 3 columns (Label, Key, Order)
                 string tableDax = "{" + Environment.NewLine;
                 for (int j = 0; j < distinctValues.Count; j++)
                 {
-                    tableDax += String.Format("    (\"{0}\", {1})", distinctValues[j], j);
+                    tableDax += String.Format("    (\"{0}\", \"{1}\", {2})", distinctValues[j], distinctValues[j], j);
                     if (j < distinctValues.Count - 1)
                         tableDax += "," + Environment.NewLine;
                 }
@@ -130,27 +498,198 @@ namespace TE_Scripting
                 // Create the calculated table
                 var propTable = Model.AddCalculatedTable(tableName, tableDax);
 
-                // Setup columns (handle both TE2 and TE3)
+                // Setup columns (handle both TE2 and TE3) - use columnBaseName without prefix
                 var te2 = propTable.Columns.Count == 0;
-                var valueColumn = te2 
-                    ? propTable.AddCalculatedTableColumn(tableName, "[Value1]") 
+                var labelColumn = te2 
+                    ? propTable.AddCalculatedTableColumn(columnBaseName, "[Value1]") 
                     : propTable.Columns["Value1"] as CalculatedTableColumn;
-                var orderColumn = te2 
-                    ? propTable.AddCalculatedTableColumn(tableName + " Order", "[Value2]") 
+                var keyColumn = te2 
+                    ? propTable.AddCalculatedTableColumn(columnBaseName + " Key", "[Value2]") 
                     : propTable.Columns["Value2"] as CalculatedTableColumn;
+                var orderColumn = te2 
+                    ? propTable.AddCalculatedTableColumn(columnBaseName + " Order", "[Value3]") 
+                    : propTable.Columns["Value3"] as CalculatedTableColumn;
 
                 if (!te2)
                 {
-                    valueColumn.IsNameInferred = false;
-                    valueColumn.Name = tableName;
+                    labelColumn.IsNameInferred = false;
+                    labelColumn.Name = columnBaseName;
+                    keyColumn.IsNameInferred = false;
+                    keyColumn.Name = columnBaseName + " Key";
                     orderColumn.IsNameInferred = false;
-                    orderColumn.Name = tableName + " Order";
+                    orderColumn.Name = columnBaseName + " Order";
                 }
 
-                valueColumn.SortByColumn = orderColumn;
+                labelColumn.SortByColumn = orderColumn;
                 orderColumn.IsHidden = true;
 
                 propertyTables.Add(propTable);
+                columnBaseNames.Add(columnBaseName);
+            }
+
+            // Step 6.5: Create partially dynamic measures in each property table
+            int totalPartialMeasures = 0;
+            
+            for (int tableIndex = 0; tableIndex < propertyTables.Count; tableIndex++)
+            {
+                var currentPropertyTable = propertyTables[tableIndex];
+                
+                // Get distinct values for this property table
+                var distinctValuesForThisProperty = measuresWithProperties
+                    .Select(m => m.properties[tableIndex])
+                    .Distinct()
+                    .ToList();
+                
+                foreach (var propertyValue in distinctValuesForThisProperty)
+                {
+                    // Filter measures that have this property value at this position
+                    var matchingMeasures = measuresWithProperties
+                        .Where(m => m.properties[tableIndex] == propertyValue)
+                        .ToList();
+                    
+                    // Build measure expression
+                    string partialMeasureExpression = "";
+                    
+                    // Add variable declarations for OTHER properties (not current table)
+                    for (int i = 0; i < propertyCount; i++)
+                    {
+                        if (i == tableIndex) continue;
+
+                        string varName = daxSafePropertyNames.Count > i ? daxSafePropertyNames[i] : columnBaseNames[i].Replace(" ", "");
+                        partialMeasureExpression += String.Format(
+                            "VAR __{0} = SELECTEDVALUE( '{1}'[{2} Key] )" + Environment.NewLine,
+                            varName,
+                            propertyTables[i].Name,
+                            columnBaseNames[i]
+                        );
+                    }
+                    
+                    if (propertyCount > 1)
+                    {
+                        partialMeasureExpression += "RETURN" + Environment.NewLine;
+                        partialMeasureExpression += "SWITCH(" + Environment.NewLine + "    TRUE()," + Environment.NewLine;
+                        
+                        // Add cases only for matching measures
+                        foreach (var item in matchingMeasures)
+                        {
+                            string condition = "    ";
+                            bool firstCondition = true;
+                            
+                            for (int i = 0; i < propertyCount; i++)
+                            {
+                                if (i == tableIndex) continue;
+                                
+                                if (!firstCondition)
+                                    condition += Environment.NewLine + "        && ";
+
+                                string varName = daxSafePropertyNames.Count > i ? daxSafePropertyNames[i] : columnBaseNames[i].Replace(" ", "");
+                                condition += String.Format(
+                                    "__{0} = \"{1}\"",
+                                    varName,
+                                    item.properties[i]
+                                );
+
+                                firstCondition = false;
+                            }
+
+                            partialMeasureExpression += condition + "," + Environment.NewLine;
+                            partialMeasureExpression += String.Format("        {0}," + Environment.NewLine, item.measure.DaxObjectFullName);
+                        }
+                        
+                        partialMeasureExpression += "    BLANK()" + Environment.NewLine + ")";
+                    }
+                    else
+                    {
+                        // Only one property, just return the measure directly
+                        partialMeasureExpression += "RETURN" + Environment.NewLine;
+                        partialMeasureExpression += matchingMeasures[0].measure.DaxObjectFullName;
+                    }
+                    
+                    // Check if measure name already exists and add suffix if needed
+                    string partialMeasureName = propertyValue;
+                    if (Model.AllMeasures.Any(m => m.Name == propertyValue))
+                    {
+                        partialMeasureName = propertyValue + " (dynamic)";
+                    }
+                    
+                    // Create the measure
+                    Measure partialMeasure = currentPropertyTable.AddMeasure(partialMeasureName, partialMeasureExpression);
+                    partialMeasure.FormatDax();
+                    partialMeasure.SetAnnotation("Properties", propertyValue);
+                    partialMeasure.SetAnnotation("PropertyNames", propertyNames.Count > tableIndex ? propertyNames[tableIndex] : String.Format("Property{0}", tableIndex + 1));
+                    
+                    // Build format string expression
+                    string partialFormatExpression = "";
+                    
+                    // Add variable declarations for OTHER properties (not current table)
+                    for (int i = 0; i < propertyCount; i++)
+                    {
+                        if (i == tableIndex) continue;
+
+                        string varName = daxSafePropertyNames.Count > i ? daxSafePropertyNames[i] : columnBaseNames[i].Replace(" ", "");
+                        partialFormatExpression += String.Format(
+                            "VAR __{0} = SELECTEDVALUE( '{1}'[{2} Key] )" + Environment.NewLine,
+                            varName,
+                            propertyTables[i].Name,
+                            columnBaseNames[i]
+                        );
+                    }
+                    
+                    if (propertyCount > 1)
+                    {
+                        partialFormatExpression += "RETURN" + Environment.NewLine;
+                        partialFormatExpression += "SWITCH(" + Environment.NewLine + "    TRUE()," + Environment.NewLine;
+                        
+                        // Add cases only for matching measures
+                        foreach (var item in matchingMeasures)
+                        {
+                            string condition = "    ";
+                            bool firstCondition = true;
+                            
+                            for (int i = 0; i < propertyCount; i++)
+                            {
+                                if (i == tableIndex) continue;
+                                
+                                if (!firstCondition)
+                                    condition += Environment.NewLine + "        && ";
+
+                                string varName = daxSafePropertyNames.Count > i ? daxSafePropertyNames[i] : columnBaseNames[i].Replace(" ", "");
+                                condition += String.Format(
+                                    "__{0} = \"{1}\"",
+                                    varName,
+                                    item.properties[i]
+                                );
+
+                                firstCondition = false;
+                            }
+
+                            partialFormatExpression += condition + "," + Environment.NewLine;
+
+                            // Use format string or format string expression
+                            string formatValue = !string.IsNullOrEmpty(item.measure.FormatStringExpression)
+                                ? item.measure.FormatStringExpression
+                                : String.Format("\"{0}\"", item.measure.FormatString.Replace("\"", "\"\""));
+
+                            partialFormatExpression += String.Format("        {0}," + Environment.NewLine, formatValue);
+                        }
+                        
+                        partialFormatExpression += "    \"\"" + Environment.NewLine + ")";
+                    }
+                    else
+                    {
+                        // Only one property, use the measure's format directly
+                        partialFormatExpression += "RETURN" + Environment.NewLine;
+                        string formatValue = !string.IsNullOrEmpty(matchingMeasures[0].measure.FormatStringExpression)
+                            ? matchingMeasures[0].measure.FormatStringExpression
+                            : String.Format("\"{0}\"", matchingMeasures[0].measure.FormatString.Replace("\"", "\"\""));
+                        partialFormatExpression += formatValue;
+                    }
+                    
+                    // Set format string expression
+                    partialMeasure.FormatStringExpression = partialFormatExpression;
+                    
+                    totalPartialMeasures++;
+                }
             }
 
             // Step 7: Build dynamic measure expression
@@ -159,10 +698,12 @@ namespace TE_Scripting
             // Add variable declarations for each property
             for (int i = 0; i < propertyCount; i++)
             {
+                string varName = daxSafePropertyNames.Count > i ? daxSafePropertyNames[i] : columnBaseNames[i].Replace(" ", "");
                 measureExpression += String.Format(
-                    "VAR __{0} = SELECTEDVALUE( '{1}'[{1}] )" + Environment.NewLine,
+                    "VAR __{0} = SELECTEDVALUE( '{1}'[{2} Key] )" + Environment.NewLine,
+                    varName,
                     propertyTables[i].Name,
-                    propertyTables[i].Name
+                    columnBaseNames[i]
                 );
             }
             
@@ -171,20 +712,21 @@ namespace TE_Scripting
             
             foreach (var item in measuresWithProperties)
             {
-                // Build condition for this measure using variables
+                // Build condition for this measure with variables
                 string condition = "    ";
                 for (int i = 0; i < propertyCount; i++)
                 {
                     if (i > 0)
                         condition += Environment.NewLine + "        && ";
                     
+                    string varName = daxSafePropertyNames.Count > i ? daxSafePropertyNames[i] : columnBaseNames[i].Replace(" ", "");
                     condition += String.Format(
                         "__{0} = \"{1}\"",
-                        propertyTables[i].Name,
+                        varName,
                         item.properties[i]
                     );
                 }
-                
+
                 measureExpression += condition + "," + Environment.NewLine;
                 measureExpression += String.Format("        {0}," + Environment.NewLine, item.measure.DaxObjectFullName);
             }
@@ -201,10 +743,12 @@ namespace TE_Scripting
             // Add variable declarations for each property
             for (int i = 0; i < propertyCount; i++)
             {
+                string varName = daxSafePropertyNames.Count > i ? daxSafePropertyNames[i] : columnBaseNames[i].Replace(" ", "");
                 formatExpression += String.Format(
-                    "VAR __{0} = SELECTEDVALUE( '{1}'[{1}] )" + Environment.NewLine,
+                    "VAR __{0} = SELECTEDVALUE( '{1}'[{2} Key] )" + Environment.NewLine,
+                    varName,
                     propertyTables[i].Name,
-                    propertyTables[i].Name
+                    columnBaseNames[i]
                 );
             }
             
@@ -213,27 +757,28 @@ namespace TE_Scripting
             
             foreach (var item in measuresWithProperties)
             {
-                // Build condition for this measure using variables
+                // Build condition for this measure with variables
                 string condition = "    ";
                 for (int i = 0; i < propertyCount; i++)
                 {
                     if (i > 0)
                         condition += Environment.NewLine + "        && ";
                     
+                    string varName = daxSafePropertyNames.Count > i ? daxSafePropertyNames[i] : columnBaseNames[i].Replace(" ", "");
                     condition += String.Format(
                         "__{0} = \"{1}\"",
-                        propertyTables[i].Name,
+                        varName,
                         item.properties[i]
                     );
                 }
-                
+
                 formatExpression += condition + "," + Environment.NewLine;
-                
+
                 // Use format string or format string expression
                 string formatValue = !string.IsNullOrEmpty(item.measure.FormatStringExpression)
                     ? item.measure.FormatStringExpression
-                    : String.Format("\"{0}\"", item.measure.FormatString);
-                
+                    : String.Format("\"{0}\"", item.measure.FormatString.Replace("\"", "\"\""));
+
                 formatExpression += String.Format("        {0}," + Environment.NewLine, formatValue);
             }
             
@@ -243,9 +788,10 @@ namespace TE_Scripting
             dynamicMeasure.FormatStringExpression = formatExpression;
 
             Output(String.Format(
-                "Created dynamic measure '{0}' with {1} property tables and {2} source measures.",
+                "Created dynamic measure '{0}' with {1} property tables, {2} partial measures, and {3} source measures.",
                 dynamicMeasureName,
                 propertyTables.Count,
+                totalPartialMeasures,
                 measuresWithProperties.Count
             ));
         }
@@ -253,7 +799,8 @@ namespace TE_Scripting
 
         void SingleMeasureParameterFunction()
         {
-
+            //2026-03-29 / B.Agullo / added support for propertyNames annotation
+            //2026-02-15 / B.Agullo / improved default function annotation values and added support for output properties annotation.
             //2025-09-26/B.Agullo/ fixed bug that would not store annotations if initialized during runtime
             //2025-09-16/B.Agullo/
             //Creates measures based on DAX UDFs 
@@ -262,6 +809,7 @@ namespace TE_Scripting
             //using GeneralFunctions;
             //using DaxUserDefinedFunction;
             //using System.Text.RegularExpressions;
+
 
 #if TE3
             ScriptHelper.WaitFormVisible = false;
@@ -300,6 +848,7 @@ namespace TE_Scripting
             {
                 // Create the FunctionExtended and add to list
                 FunctionExtended fe = FunctionExtended.CreateFunctionExtended(f);
+                if (fe == null) return; 
                 selectedFunctions.Add(fe);
             }
 
@@ -349,6 +898,9 @@ namespace TE_Scripting
                 parameterObjectsMap[param.Name] = selectedObjectsForParam;
             }
 
+            int totalMeasuresCreated = 0;
+            int totalColumnsCreated = 0;
+
             foreach (var func in selectedFunctions)
             {
                 string delimiter = "";
@@ -371,6 +923,9 @@ namespace TE_Scripting
                 IList<string> previousOutputProperties = new List<string>() { func.OutputProperties };
                 IList<string> currentOutputProperties = new List<string>();
 
+                IList<string> previousOutputPropertyNames = new List<string>() { func.OutputPropertyNames };
+                IList<string> currentOutputPropertyNames = new List<string>();
+
                 // When iterating the parameters of this specific function, use the mapping created for distinct parameters.
                 foreach (var param in func.Parameters)
                 {
@@ -380,6 +935,7 @@ namespace TE_Scripting
                     currentDestinations = new List<string>();
                     currentDisplayFolders = new List<string>();
                     currentOutputProperties = new List<string>();
+                    currentOutputPropertyNames = new List<string>();
 
                     // Retrieve the objects list for this parameter name from the map (prompting was done earlier)
                     (IList<string> Values, string Type) paramObject;
@@ -397,6 +953,7 @@ namespace TE_Scripting
                         string sDisplayFolder = previousDisplayFolders[i];
                         string sDestination = previousDestinations[i];
                         string sOutputProperties = previousOutputProperties[i];
+                        string sOutputPropertyNames = previousOutputPropertyNames[i];
 
                         foreach (var o in paramObject.Values)
                         {
@@ -407,6 +964,7 @@ namespace TE_Scripting
                             string paramDisplayFolder = "";
                             string paramTable = "";
                             string paramProperties = "";
+                            string paramPropertyNames = "";
 
                             //prepare placeholder
                             string paramNamePlaceholder = param.Name + "Name";
@@ -414,6 +972,9 @@ namespace TE_Scripting
                             string paramFormatStringFullPlaceholder = param.Name + "FormatStringFull";
                             string paramDisplayFolderPlaceholder = param.Name + "DisplayFolder";
                             string paramPropertiesPlaceholder = param.Name + "Properties";
+                            string paramPropertyNamesPlaceholder = param.Name + "PropertyNames";
+
+
                             string paramTablePlaceholder = "";
 
 
@@ -425,6 +986,7 @@ namespace TE_Scripting
                                 paramDisplayFolder = m.DisplayFolder;
                                 paramTable = m.Table.DaxObjectFullName;
                                 paramProperties = m.GetAnnotation("Properties") ?? "";
+                                paramPropertyNames = m.GetAnnotation("PropertyNames") ?? "";
 
                                 paramTablePlaceholder = param.Name + "Table";
 
@@ -437,6 +999,7 @@ namespace TE_Scripting
                                 paramDisplayFolder = c.DisplayFolder;
                                 paramTable = c.Table.DaxObjectFullName;
                                 paramProperties = c.GetAnnotation("Properties") ?? "";
+                                paramPropertyNames = c.GetAnnotation("PropertyNames") ?? "";
 
                                 paramTablePlaceholder = param.Name + "Table";
                             }
@@ -448,6 +1011,7 @@ namespace TE_Scripting
                                 paramDisplayFolder = "";
                                 paramTable = t.DaxObjectFullName;
                                 paramProperties = t.GetAnnotation("Properties") ?? "";
+                                paramPropertyNames = t.GetAnnotation("PropertyNames") ?? "";
 
                                 paramTablePlaceholder = param.Name;
                             }
@@ -485,6 +1049,10 @@ namespace TE_Scripting
                                     .Replace(paramNamePlaceholder, paramName)
                                     .Replace(paramPropertiesPlaceholder, paramProperties));
 
+                            currentOutputPropertyNames.Add(
+                                sOutputPropertyNames
+                                    .Replace(paramPropertyNamesPlaceholder, paramPropertyNames));
+
 
                         }
 
@@ -498,6 +1066,7 @@ namespace TE_Scripting
                     previousDisplayFolders = currentDisplayFolders;
                     previousFormatStrings = currentFormatStrings;
                     previousOutputProperties = currentOutputProperties;
+                    previousOutputPropertyNames = currentOutputPropertyNames;
                 }
 
 
@@ -547,6 +1116,14 @@ namespace TE_Scripting
                         {
                             measure.SetAnnotation("Properties", currentOutputProperties[i]);
                         }
+                        
+                        // Set PropertyNames annotation with the transformed outputPropertyNames value
+                        if (!string.IsNullOrEmpty(currentOutputPropertyNames[i]))
+                        {
+                            measure.SetAnnotation("PropertyNames", currentOutputPropertyNames[i]);
+                        }
+                        
+                        totalMeasuresCreated++;
                     }
 
                 }
@@ -570,6 +1147,12 @@ namespace TE_Scripting
                         {
                             column.SetAnnotation("Properties", currentOutputProperties[i]);
                         }
+                        
+                        // Set PropertyNames annotation with the transformed outputPropertyNames value
+                        if (!string.IsNullOrEmpty(currentOutputPropertyNames[i]))
+                        {
+                            column.SetAnnotation("PropertyNames", currentOutputPropertyNames[i]);
+                        }
                     }
 
                 }
@@ -577,6 +1160,22 @@ namespace TE_Scripting
                 {
                     Info("Not implemented yet for output types other than Measure.");
                 }
+            }
+
+            // Display summary message
+            if (totalMeasuresCreated > 0 || totalColumnsCreated > 0)
+            {
+                string message = "";
+                if (totalMeasuresCreated > 0)
+                {
+                    message += String.Format("{0} measure{1} created", totalMeasuresCreated, totalMeasuresCreated == 1 ? "" : "s");
+                }
+                if (totalColumnsCreated > 0)
+                {
+                    if (totalMeasuresCreated > 0) message += " and ";
+                    message += String.Format("{0} column{1} created", totalColumnsCreated, totalColumnsCreated == 1 ? "" : "s");
+                }
+                Info(message + ".");
             }
 
 
@@ -588,22 +1187,35 @@ namespace TE_Scripting
         void createFieldParameter()
         {
             //#r "Microsoft.VisualBasic"
+            //#r "System.Drawing"
             //using Microsoft.VisualBasic;
+            //using GeneralFunctions;
 
-            //99% comes from Daniel Otykier --> https://github.com/TabularEditor/TabularEditor3/issues/541#issuecomment-1129228481
-            //1% B.Agullo --> pop-up to choose parameter name. 
+            // 2026-05-13 / B.Agullo / fixed bug to execute in TE2
+            //2026-04-23 / B.Agullo / improvements to the default parameter name suggestion logic (based on property names if available) 
+            //2026-03-29 / B.Agullo / added support for propertyNames annotation
+            //80% comes from Daniel Otykier --> https://github.com/TabularEditor/TabularEditor3/issues/541#issuecomment-1129228481
+            //20% B.Agullo --> pop-up to choose parameter name + all the properties annotation support (split by pipe delimiter and added as additional columns in the field parameter table)
 
             // Before running the script, select the measures or columns that you
             // would like to use as field parameters (hold down CTRL to select multiple
             // objects). Also, you may change the name of the field parameter table
             // below. NOTE: If used against Power BI Desktop, you must enable unsupported
             // features under File > Preferences (TE2) or Tools > Preferences (TE3).
-            var name = Interaction.InputBox("Provide the name for the field parameter", "Parameter name", "Parameter");
+
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
             if (Selected.Columns.Count == 0 && Selected.Measures.Count == 0) throw new Exception("No columns or measures selected!");
 
             // Get objects collection
             var objects = Selected.Columns.Any() ? Selected.Columns.Cast<ITabularTableObject>() : Selected.Measures;
+
+            if (Fx.IsAnswerYes("Do you want to order measures/columns by name?"))
+            {
+                objects = objects.OrderBy(o => o.Name).ToList();
+            }
 
             // Retrieve Properties annotations and split them by pipe delimiter
             var objectPropertiesLists = new List<List<string>>();
@@ -638,6 +1250,106 @@ namespace TE_Scripting
                     objectPropertiesLists[i].Add("");
                 }
             }
+
+            // Retrieve PropertyNames annotations from selected objects
+            var propertyNamesAnnotations = new List<string>();
+            foreach (var obj in objects)
+            {
+                string propertyNamesAnnotation = "";
+                if (obj is Measure)
+                {
+                    propertyNamesAnnotation = ((Measure)obj).GetAnnotation("PropertyNames") ?? "";
+                }
+                else if (obj is Column)
+                {
+                    propertyNamesAnnotation = ((Column)obj).GetAnnotation("PropertyNames") ?? "";
+                }
+                
+                if (!string.IsNullOrEmpty(propertyNamesAnnotation))
+                {
+                    propertyNamesAnnotations.Add(propertyNamesAnnotation);
+                }
+            }
+
+            // Determine property names for field parameter columns
+            List<string> propertyNames = new List<string>();
+            
+            if (propertyNamesAnnotations.Count > 0)
+            {
+                // Get distinct PropertyNames values
+                var distinctPropertyNames = propertyNamesAnnotations.Distinct().ToList();
+                
+                if (distinctPropertyNames.Count == 1)
+                {
+                    // All PropertyNames are the same, use them
+                    propertyNames = distinctPropertyNames[0].Split('|').ToList();
+                }
+                else
+                {
+                    // Different PropertyNames found, let user choose
+                    var optionsWithDefine = distinctPropertyNames.ToList();
+                    optionsWithDefine.Add("<Define now>");
+                    
+                    string chosenPropertyNames = Fx.ChooseString(
+                        OptionList: optionsWithDefine,
+                        label: "Different PropertyNames found. Choose one or define new:"
+                    );
+                    
+                    if (string.IsNullOrEmpty(chosenPropertyNames)) return;
+                    
+                    if (chosenPropertyNames == "<Define now>")
+                    {
+                        // Show input box with first PropertyNames as default
+                        chosenPropertyNames = Fx.GetNameFromUser(
+                            Prompt: "Enter property names (pipe-separated):",
+                            Title: "Property Names",
+                            DefaultResponse: distinctPropertyNames[0]
+                        );
+                        
+                        if (string.IsNullOrEmpty(chosenPropertyNames)) return;
+                    }
+                    
+                    propertyNames = chosenPropertyNames.Split('|').ToList();
+                }
+            }
+            else
+            {
+                // No PropertyNames found, ask one by one
+                for (int i = 0; i < maxPropertiesCount; i++)
+                {
+                    // Collect distinct values for this property position (up to 3)
+                    var sampleValues = objectPropertiesLists
+                        .Where(pl => pl.Count > i && !string.IsNullOrEmpty(pl[i]))
+                        .Select(pl => pl[i])
+                        .Distinct()
+                        .Take(3)
+                        .ToList();
+                    
+                    string sampleText = sampleValues.Count > 0 
+                        ? String.Format(" (found values: '{0}')", string.Join("', '", sampleValues))
+                        : "";
+                    
+                    string propertyName = Fx.GetNameFromUser(
+                        Prompt: String.Format("Enter name for property {0}{1}:", i + 1, sampleText),
+                        Title: "Property Name",
+                        DefaultResponse: String.Format("Property{0}", i + 1)
+                    );
+                    
+                    if (string.IsNullOrEmpty(propertyName)) return;
+                    
+                    propertyNames.Add(propertyName);
+                }
+            }
+
+            // Build default parameter name based on PropertyNames
+            string defaultParameterName = propertyNames.Count > 0
+                ? "Parameter " + string.Join(" ", propertyNames)
+                : "Parameter";
+
+            // Ask user for parameter name with smart default
+            var name = Fx.GetNameFromUser("Provide the name for the field parameter", "Parameter name", defaultParameterName);
+            
+            if (string.IsNullOrEmpty(name)) return;
 
             // Construct the DAX for the calculated table based on the current selection:
             string dax = "";
@@ -674,7 +1386,7 @@ namespace TE_Scripting
             for (int i = 0; i < maxPropertiesCount; i++)
             {
                 int valueIndex = 4 + i; // Value4, Value5, etc.
-                string columnName = name + " Property" + (i + 1);
+                string columnName = propertyNames.Count > i ? propertyNames[i] : String.Format("Property{0}", i + 1);
                 var propColumn = te2 
                     ? table.AddCalculatedTableColumn(columnName, "[Value" + valueIndex + "]") 
                     : table.Columns["Value" + valueIndex] as CalculatedTableColumn;
@@ -1192,12 +1904,87 @@ namespace TE_Scripting
             //using GeneralFunctions;
             //using DaxUserDefinedFunction;
 
+#if TE3
+            ScriptHelper.WaitFormVisible = false;
+#endif
 
-            Measure targetMeasure = Fx.GetSelectedMeasure(Selected.Measures);
-            if (targetMeasure == null) return;
+            Measure targetMeasure = null;
+            string measureName = "Clipboard Expression";
+            string previousExpression = "";
 
-            string measureName = targetMeasure.Name; 
-            string previousExpression = targetMeasure.Expression;
+            // Check if clipboard contains text (and not just whitespace)
+            string clipboardContent = Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(clipboardContent))
+            {
+                // Show clipboard content in a read-only window and ask for confirmation
+                var form = new Form();
+                form.Text = "Clipboard Content";
+                form.Width = 800;
+                form.Height = 600;
+                form.StartPosition = FormStartPosition.CenterScreen;
+
+                var textBox = new TextBox();
+                textBox.Multiline = true;
+                textBox.ScrollBars = ScrollBars.Both;
+                textBox.WordWrap = false;
+                textBox.ReadOnly = true;
+                textBox.Text = clipboardContent;
+                textBox.Dock = DockStyle.Fill;
+                textBox.Font = new System.Drawing.Font("Consolas", 10);
+
+                var buttonPanel = new Panel();
+                buttonPanel.Dock = DockStyle.Bottom;
+                buttonPanel.Height = 40;
+
+                var okButton = new Button();
+                okButton.Text = "Expand this expression";
+                okButton.DialogResult = DialogResult.OK;
+                okButton.Width = 150;
+                okButton.Left = 10;
+                okButton.Top = 5;
+
+                var cancelButton = new Button();
+                cancelButton.Text = "Cancel";
+                cancelButton.DialogResult = DialogResult.Cancel;
+                cancelButton.Width = 80;
+                cancelButton.Left = 170;
+                cancelButton.Top = 5;
+
+                buttonPanel.Controls.Add(okButton);
+                buttonPanel.Controls.Add(cancelButton);
+
+                form.Controls.Add(textBox);
+                form.Controls.Add(buttonPanel);
+
+                var result = form.ShowDialog();
+
+                if (result == DialogResult.OK)
+                {
+                    previousExpression = clipboardContent;
+                }
+                else
+                {
+                    Info("Operation cancelled.");
+                    return;
+                }
+            }
+            else
+            {
+                // No clipboard content, ask if user wants to select a measure
+                if (!Fx.IsAnswerYes("No expression found in clipboard. Do you want to select a measure instead?"))
+                {
+                    Info("Operation cancelled.");
+                    return;
+                }
+
+                // Select measure as before
+                targetMeasure = Fx.GetSelectedMeasure(Selected.Measures);
+                if (targetMeasure == null) return;
+
+                measureName = targetMeasure.Name;
+                previousExpression = targetMeasure.Expression;
+            }
 
             // Parse all UDFs in the model and create expression templates
             var udfTemplates = new Dictionary<string, (string template, List<FunctionParameter> parameters)>();
@@ -1259,9 +2046,13 @@ namespace TE_Scripting
                                 template += "{" + paramIndex + "}";
                             }
                         }
-                        else
+                        else if (Model.Tables.Any(t => t.Name == token.Text))
                         {
                             template += "'" + token.Text + "'";
+                        }
+                        else
+                        {
+                            template += token.Text;
                         }
                     }
                     else if (token.Type == DaxToken.TABLE)
@@ -1302,25 +2093,32 @@ namespace TE_Scripting
             int daxUdfParensCount = 0;
             int paramParensCount = 0; 
             
-            //Check if there are any column_or_measure tokens not preceded by a table token,
-            // or a column_or_measure as first token, 
-            // or a Other_identifier (i.e. DAX UDF) 
+            //Check if there are any column_or_measure tokens that are actual measures in the model and not preceded by a table token,
+            // or a column_or_measure as first token that is an actual measure, 
+            // or any token whose text matches a DAX UDF name
             // and limit to 10 iterations
-            while (tokens.Any(t => 
+            while (i<10 && tokens.Any(t => 
                 (
                     (
                         t.Type == DaxToken.COLUMN_OR_MEASURE
-                        && (t.Prev.Type != DaxToken.TABLE || t.TokenIndex == 0))
+                        && (t.Prev != null && t.Prev.Type != DaxToken.TABLE)
+                        && Model.AllMeasures.Any(m => m.Name == t.Text)
                     )
                     ||
-                    (   t.Type == 113 /*DaxToken.OTHER_IDENTIFIER */)
+                    (
+                        t.Type == DaxToken.COLUMN_OR_MEASURE
+                        && t.TokenIndex == 0
+                        && Model.AllMeasures.Any(m => m.Name == t.Text)
+                    )
+                    ||
+                    udfTemplates.ContainsKey(t.Text)
                 )
-                && i<10)
+            ))
             {
                 
                 currentExpression = "";
 
-                // this code assumes that columns are always preceded by table and measures are not
+                
                 foreach (DaxToken token in tokens)
                 {
                     // Check if previous token indicated this is a column
@@ -1413,6 +2211,10 @@ namespace TE_Scripting
                             {
                                 paramValue += "'" + token.Text + "'";
                             }
+                            else if(token.Type == DaxToken.STRING_LITERAL)
+                            {
+                                paramValue += @"""" + token.Text + @"""";
+                            }
                             else if (token.CommentOrWhitespace)
                             {
                                 /*do nothing*/
@@ -1426,40 +2228,140 @@ namespace TE_Scripting
                     // Check for Table token followed by Column/Measure token
                     else if (token.Type == DaxToken.TABLE)
                     {
-                        Table table = Model.Tables.FirstOrDefault(t => t.Name == token.Text);
-                        if (table == null)
+                        // First check if it's a Calendar
+                        if (Model.AllCalendars.Any(f => f.Name == token.Text))
                         {
-                            Error(token.Text + " table not found in the model.");
-                            return;
+                            // It's a Calendar, keep with single quotes
+                            currentExpression += "'" + token.Text + "'";
                         }
-
-                        if (token.Next.Type == DaxToken.COLUMN_OR_MEASURE)
+                        else
                         {
-                            // Set flag to indicate next token is a column
-                            isColumn = true;
-                        }
+                            // It's a table, proceed with existing logic
+                            Table table = Model.Tables.FirstOrDefault(t => t.Name == token.Text);
+                            if (table == null)
+                            {
+                                Error(token.Text + " table not found in the model.");
+                                return;
+                            }
 
-                        currentExpression += table.DaxObjectFullName;
+                            if (token.Next.Type == DaxToken.COLUMN_OR_MEASURE)
+                            {
+                                // Check if it's actually a column in this table
+                                Column column = table.Columns.FirstOrDefault(c => c.Name == token.Next.Text);
+                                if (column != null)
+                                {
+                                    // It's a column, set flag to add brackets in next iteration
+                                    isColumn = true;
+                                    currentExpression += table.DaxObjectFullName;
+                                }
+                                else
+                                {
+                                    // Not a column, check if it's a measure (will be expanded in next token)
+                                    Measure measure = Model.AllMeasures.FirstOrDefault(m => m.Name == token.Next.Text);
+                                    if (measure != null)
+                                    {
+                                        // It's a measure, don't add table name (measure will be expanded next)
+                                    }
+                                    else
+                                    {
+                                        // Check if it's a special FormatString measure pattern
+                                        bool isFormatStringMeasure = false;
+                                        if (token.Next.Text.StartsWith("_") && token.Next.Text.EndsWith(" FormatString"))
+                                        {
+                                            string baseMeasureName = token.Next.Text.Substring(1, token.Next.Text.Length - " FormatString".Length - 1);
+                                            Measure baseMeasure = Model.AllMeasures.FirstOrDefault(m => m.Name == baseMeasureName);
+                                            if (baseMeasure != null)
+                                            {
+                                                // It's a valid FormatString measure, don't add table name (will be expanded next)
+                                                isFormatStringMeasure = true;
+                                            }
+                                        }
+                                        
+                                        if (!isFormatStringMeasure)
+                                        {
+                                            Error(String.Format("'{0}' not found as column in table '{1}' or as measure in the model.", token.Next.Text, table.Name));
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                currentExpression += table.DaxObjectFullName;
+                            }
+                        }
                     }
                     else if (token.Type == DaxToken.COLUMN_OR_MEASURE)
                     {
                         Measure measure = Model.AllMeasures.FirstOrDefault(m => m.Name == token.Text);
-                        if (measure == null)
+                        if (measure != null)
                         {
-                            Error(token.Text + " measure not found in the model.");
-                            return;
+                            // It's a measure, expand it
+                            currentExpression += String.Format(
+                                @"/*{0}*/
+                            CALCULATE({1})",
+                                measure.Name,
+                                measure.Expression);
+                        }
+                        else
+                        {
+                            // Check if it follows the pattern "_<MeasureName> FormatString"
+                            if (token.Text.StartsWith("_") && token.Text.EndsWith(" FormatString"))
+                            {
+                                // Extract the base measure name
+                                string baseMeasureName = token.Text.Substring(1, token.Text.Length - " FormatString".Length - 1);
+                                Measure baseMeasure = Model.AllMeasures.FirstOrDefault(m => m.Name == baseMeasureName);
+                                
+                                if (baseMeasure != null)
+                                {
+                                    // Replace with FormatStringExpression or FormatString
+                                    if (!string.IsNullOrEmpty(baseMeasure.FormatStringExpression))
+                                    {
+                                        currentExpression += String.Format(
+                                            @"/*{0}*/
+                            ({1})",
+                                            token.Text,
+                                            baseMeasure.FormatStringExpression);
+                                    }
+                                    else
+                                    {
+                                        currentExpression += String.Format(
+                                            @"/*{0}*/
+                            ""{1}""",
+                                            token.Text,
+                                            baseMeasure.FormatString);
+                                    }
+                                }
+                                else
+                                {
+                                    // Base measure not found, keep as-is with brackets
+                                    currentExpression += "[" + token.Text + "]";
+                                }
+                            }
+                            else
+                            {
+                                // Not a measure and doesn't match the pattern, keep as-is with brackets
+                                currentExpression += "[" + token.Text + "]";
+                            }
+                        }
+                    }
+                    else if (token.Type == 114 /*other identifier*/) {
+                        // Check if this UDF exists in the model before setting the flag
+                        if (udfTemplates.ContainsKey(token.Text))
+                        {
+                            isDaxUdf = true;
+                            daxUdfName = token.Text;
+                        }
+                        else
+                        {
+                            // Not a UDF, keep as-is
+                            currentExpression += token.Text;
                         }
 
-                        currentExpression += String.Format(
-                            @"/*{0}*/
-                            CALCULATE({1})",
-                            measure.Name,
-                            measure.Expression);
                     }
-                    else if (token.Type == 113 /*other identifier*/) {
-                        isDaxUdf = true;
-                        daxUdfName = token.Text;
-
+                    else if (token.Type == DaxToken.STRING_LITERAL)
+                    {
+                        currentExpression += @"""" + token.Text + @"""";
                     }
                     else
                     {
@@ -1476,12 +2378,8 @@ namespace TE_Scripting
             }
 
             Output(currentExpression.ReplaceLineEndings());
-            //string tempFile = Path.Combine(Path.GetTempPath(), "ExpandedDAX_" + measureName.Replace(" ", "_") + ".dax");
-            //File.WriteAllText(tempFile, currentExpression);
-
-            //System.Diagnostics.Process.Start("notepad.exe", tempFile);
-
-            //Info("Expansion complete. Result saved to: " + tempFile);
+            Clipboard.SetText(currentExpression);
+            Info("Expansion complete. Result copied to clipboard.");
         }
         void disableAutoDateTime()
         {
@@ -3548,11 +4446,36 @@ namespace TE_Scripting
             {
                 var form = new Form();
                 form.Text = title;
+                form.Width = 500;
+                form.Height = 400;
+                form.StartPosition = FormStartPosition.CenterScreen;
+                form.Padding = new Padding(10);
+
                 var buttonPanel = new Panel();
                 buttonPanel.Dock = DockStyle.Bottom;
-                buttonPanel.Height = 30;
-                var okButton = new System.Windows.Forms.Button() { DialogResult = DialogResult.OK, Text = "OK" };
-                var cancelButton = new System.Windows.Forms.Button() { DialogResult = DialogResult.Cancel, Text = "Cancel", Left = 80 };
+                buttonPanel.Height = 50;
+                buttonPanel.Padding = new Padding(5);
+
+                var okButton = new System.Windows.Forms.Button() 
+                { 
+                    DialogResult = DialogResult.OK, 
+                    Text = "OK",
+                    Width = 100,
+                    Height = 35,
+                    Left = 10,
+                    Top = 5
+                };
+
+                var cancelButton = new System.Windows.Forms.Button() 
+                { 
+                    DialogResult = DialogResult.Cancel, 
+                    Text = "Cancel",
+                    Width = 100,
+                    Height = 35,
+                    Left = 120,
+                    Top = 5
+                };
+
                 var listbox = new ListBox();
                 listbox.Dock = DockStyle.Fill;
                 listbox.Items.AddRange(options.ToArray());
@@ -3667,11 +4590,36 @@ namespace TE_Scripting
             {
                 var form = new Form();
                 form.Text = title;
+                form.Width = 500;
+                form.Height = 400;
+                form.StartPosition = FormStartPosition.CenterScreen;
+                form.Padding = new Padding(10);
+
                 var buttonPanel = new Panel();
                 buttonPanel.Dock = DockStyle.Bottom;
-                buttonPanel.Height = 30;
-                var okButton = new System.Windows.Forms.Button() { DialogResult = DialogResult.OK, Text = "OK" };
-                var cancelButton = new System.Windows.Forms.Button() { DialogResult = DialogResult.Cancel, Text = "Cancel", Left = 80 };
+                buttonPanel.Height = 50;
+                buttonPanel.Padding = new Padding(5);
+
+                var okButton = new System.Windows.Forms.Button() 
+                { 
+                    DialogResult = DialogResult.OK, 
+                    Text = "OK",
+                    Width = 100,
+                    Height = 35,
+                    Left = 10,
+                    Top = 5
+                };
+
+                var cancelButton = new System.Windows.Forms.Button() 
+                { 
+                    DialogResult = DialogResult.Cancel, 
+                    Text = "Cancel",
+                    Width = 100,
+                    Height = 35,
+                    Left = 120,
+                    Top = 5
+                };
+
                 var listbox = new ListBox();
                 listbox.Dock = DockStyle.Fill;
                 listbox.Items.AddRange(options.ToArray());
@@ -3857,12 +4805,12 @@ namespace TE_Scripting
                     //remove #r directives from custom class 
                     codeToAppend = codeToAppend.Replace(codeToAppend.Substring(hashrFirstCustomClass, endOfHashrCustomClass - hashrFirstCustomClass), "");
 
-                    int usingFirstMacroCode = Math.Max(previousCode.IndexOf("using"), endOfHashrMacroCode);
-                    int usingFirstCustomClass = codeToAppend.IndexOf("using");
+                    int usingFirstMacroCode = Math.Max(previousCode.Substring(0, Math.Min(200, previousCode.Length)).IndexOf("using"), endOfHashrMacroCode);
+                    int usingFirstCustomClass = codeToAppend.Substring(0, Math.Min(200, codeToAppend.Length)).IndexOf("using");
 
                     if (usingFirstCustomClass != -1)
                     {
-                        int usingLastCustomClass = codeToAppend.LastIndexOf("using");
+                        int usingLastCustomClass = codeToAppend.Substring(0,Math.Min(200, codeToAppend.Length)).LastIndexOf("using");
                         int endOfusingCustomClass = codeToAppend.IndexOf(Environment.NewLine, usingLastCustomClass);
 
                         string[] usingLines = codeToAppend.Substring(usingFirstCustomClass, endOfusingCustomClass - usingFirstCustomClass).Split('\n');
@@ -3877,7 +4825,7 @@ namespace TE_Scripting
                                 //insert in the code right before the first one
                                 previousCode = previousCode.Substring(0, Math.Max(usingFirstMacroCode, 0))
                                     + Environment.NewLine + usingLine.Trim() + Environment.NewLine
-                                    + previousCode.Substring(usingFirstMacroCode);
+                                    + previousCode.Substring(Math.Max(usingFirstMacroCode, 0));
 
                                 usingFirstMacroCode = Math.Max(previousCode.IndexOf("using"), 0);
                             }
@@ -3900,17 +4848,32 @@ namespace TE_Scripting
 
                 string outputCode = previousCode += Environment.NewLine + codeToAppend;
 
-                int lastUsingFinal = outputCode.IndexOf("using");
-
-                if (lastUsingFinal != -1)
+                // Reorder directives: all #r lines first, then all using lines, then the rest of the code
+                string[] allOutputLines = outputCode.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
+                List<string> hashrDirectivesFinal = new List<string>();
+                List<string> usingDirectivesFinal = new List<string>();
+                List<string> remainingCodeLines = new List<string>();
+                foreach (string outputLine in allOutputLines)
                 {
-                    int endOfDirective = outputCode.IndexOf(";", lastUsingFinal) + 1;
-                    outputCode = outputCode.Substring(0, endOfDirective)
-                        + Environment.NewLine
-                        + Environment.NewLine
-                        + outputCode.Substring(endOfDirective + 1);
-
+                    string trimmedLine = outputLine.Trim();
+                    if (trimmedLine.StartsWith("#r "))
+                        hashrDirectivesFinal.Add(trimmedLine);
+                    else if (trimmedLine.StartsWith("using ") && trimmedLine.EndsWith(";") && !trimmedLine.Contains("("))
+                        usingDirectivesFinal.Add(trimmedLine);
+                    else
+                        remainingCodeLines.Add(outputLine);
                 }
+                // Remove leading blank lines from the code body
+                while (remainingCodeLines.Count > 0 && string.IsNullOrWhiteSpace(remainingCodeLines[0]))
+                    remainingCodeLines.RemoveAt(0);
+
+                List<string> finalOutputLines = new List<string>();
+                finalOutputLines.AddRange(hashrDirectivesFinal);
+                finalOutputLines.AddRange(usingDirectivesFinal);
+                if (hashrDirectivesFinal.Count > 0 || usingDirectivesFinal.Count > 0)
+                    finalOutputLines.Add("");
+                finalOutputLines.AddRange(remainingCodeLines);
+                outputCode = string.Join(Environment.NewLine, finalOutputLines);
 
                 return outputCode;
             };

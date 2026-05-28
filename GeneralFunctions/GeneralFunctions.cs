@@ -12,6 +12,8 @@ using Report.DTO;
 using System.IO;
 using Newtonsoft.Json;
 using static Report.DTO.VisualDto;
+using Label = System.Windows.Forms.Label;
+using Microsoft.CodeAnalysis;
 
 namespace GeneralFunctions
 {
@@ -23,6 +25,7 @@ namespace GeneralFunctions
     {
         //#r "Microsoft.VisualBasic"
         //#r "System.Windows.Forms"
+        //#r "System.Drawing"
         //using Microsoft.VisualBasic;
         //using System.Windows.Forms;
 
@@ -30,7 +33,7 @@ namespace GeneralFunctions
         // NOCOPY    in TE2 (at least up to 2.17.2) any method that accesses or modifies
         // NOCOPY    the model needs a reference to the model 
         // NOCOPY    the following is an example method where you can build extra logic
-        
+
         public static Measure GetSelectedMeasure(IEnumerable<Measure> measures, string label = "Select Measure")
         {
             Measure selectedMeasure = null;
@@ -40,7 +43,7 @@ namespace GeneralFunctions
             }
             else
             {
-                selectedMeasure = SelectMeasure(preselect: null, label: label);
+                selectedMeasure = SelectMeasure(label: label);
                 if (selectedMeasure == null)
                 {
                     Info("No measure selected.");
@@ -52,6 +55,41 @@ namespace GeneralFunctions
             return selectedMeasure;
         }
         
+        public static Table GetSelectedTable(Model model, IEnumerable<Table> tables, string label = "Select Table", bool createMeasureTableIfNoneSelected = false, string createTableName = "ReferentialIntegrity" )
+        {
+            Table selectedTable = null;
+            if (tables.Count() == 1)
+            {
+                selectedTable = tables.First();
+            }
+            else if (tables.Count() > 1)
+            {
+                selectedTable = SelectTable(tables, preselect: tables.First(), label: label);
+                if (selectedTable == null)
+                {
+                    Info("No table selected.");
+                    return null;
+                }
+            } else             {
+                if (createMeasureTableIfNoneSelected)
+                {
+                    selectedTable = model.AddCalculatedTable(createTableName, "FILTER({0},FALSE)");
+                } 
+                else
+                {
+                    selectedTable = SelectTable(tables: tables, label: label);
+                    if (selectedTable == null)
+                    {
+                        Info("No table selected.");
+                        return null;
+                    }
+                }
+                
+            }
+
+            return selectedTable;
+        }
+
         public static Dictionary<string, string> SelectCalculationItems(Model model, string label = "Select calculation items (max 1 per group)")
         {
             
@@ -334,6 +372,12 @@ namespace GeneralFunctions
         public static string GetNameFromUser(string Prompt, string Title, string DefaultResponse)
         {
             string response = Interaction.InputBox(Prompt, Title, DefaultResponse, 740, 400);
+            if (response == null)
+            {
+                Error("No input provided.");
+                return null;
+
+            };
             return response;
         }
 
@@ -375,6 +419,7 @@ namespace GeneralFunctions
                 case "Measure":
 
                     selectedValues = SelectMeasureMultiple(model: model, label: prompt2);
+
                     break;
                 case "Scalar":
                     IList<string> scalarList = new List<string>();
@@ -385,8 +430,9 @@ namespace GeneralFunctions
                     Error("Invalid selection type");
                     return returnEmpty;
 
+
             }
-            if (selectedValues.Count == 0) return returnEmpty; 
+            if (selectedValues == null || selectedValues.Count == 0) return returnEmpty; 
             return (Values:selectedValues, Type:selectionType);
         }
 
@@ -410,21 +456,121 @@ namespace GeneralFunctions
                 Padding = new Padding(20)
             };
 
+            // Keep track of selected items across filtering
+            HashSet<string> selectedItemsSet = new HashSet<string>();
+            bool isRestoringSelections = false;
+
+            // Search panel at the top
+            Panel searchPanel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 35,
+                Padding = new Padding(0, 0, 0, 5)  // Add 5px bottom padding for spacing
+            };
+
+            Label searchLabel = new System.Windows.Forms.Label
+            {
+                Text = "Search:",
+                AutoSize = true,
+                Location = new System.Drawing.Point(0, 8),
+                Width = 70
+            };
+
+            TextBox searchBox = new TextBox
+            {
+                Location = new System.Drawing.Point(75, 5),
+                Width = customWidth - 115,
+                Anchor = AnchorStyles.Left | AnchorStyles.Right
+            };
+
+            searchPanel.Controls.Add(searchLabel);
+            searchPanel.Controls.Add(searchBox);
+
+            // ListBox panel in the middle
+            Panel listBoxPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(0, 35, 0, 75)  // Top padding = searchPanel height, Bottom = buttonPanel height
+            };
+
             ListBox listbox = new ListBox
             {
                 Dock = DockStyle.Fill,
                 SelectionMode = MultiSelect ? SelectionMode.MultiExtended : SelectionMode.One
             };
+            
+            listBoxPanel.Controls.Add(listbox);
+            
+            // Initial population
             listbox.Items.AddRange(OptionList.ToArray());
             if (!MultiSelect && OptionList.Count > 0)
                 listbox.SelectedItem = OptionList[0];
 
+            // Track manual selection changes
+            listbox.SelectedIndexChanged += delegate
+            {
+                // Skip if we're programmatically restoring selections
+                if (isRestoringSelections) return;
+
+                // Get current items in listbox
+                HashSet<string> currentItems = new HashSet<string>();
+                foreach (object item in listbox.Items)
+                {
+                    currentItems.Add(item.ToString());
+                }
+
+                // Remove only currently visible items that are NOT selected
+                foreach (string item in currentItems)
+                {
+                    if (!listbox.SelectedItems.Cast<object>().Any(selected => selected.ToString() == item))
+                    {
+                        selectedItemsSet.Remove(item);
+                    }
+                }
+
+                // Add currently selected items
+                foreach (object item in listbox.SelectedItems)
+                {
+                    selectedItemsSet.Add(item.ToString());
+                }
+            };
+
+            // Search/filter functionality
+            searchBox.TextChanged += delegate
+            {
+                string searchText = searchBox.Text;
+                
+                // Filter the list
+                var filteredList = OptionList
+                    .Where(item => item.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                    .ToList();
+
+                // Set flag to prevent SelectedIndexChanged from firing during restoration
+                isRestoringSelections = true;
+
+                // Repopulate listbox
+                listbox.Items.Clear();
+                listbox.Items.AddRange(filteredList.ToArray());
+
+                // Restore previous selections
+                for (int i = 0; i < listbox.Items.Count; i++)
+                {
+                    if (selectedItemsSet.Contains(listbox.Items[i].ToString()))
+                    {
+                        listbox.SetSelected(i, true);
+                    }
+                }
+
+                // Re-enable selection tracking
+                isRestoringSelections = false;
+            };
+
             FlowLayoutPanel buttonPanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 70,
+                Height = 75,
                 FlowDirection = FlowDirection.LeftToRight,
-                Padding = new Padding(10)
+                Padding = new Padding(10, 5, 10, 10)  // Add top padding for spacing from listbox
             };
 
             Button selectAllButton = new Button { Text = "Select All", Visible = MultiSelect , Height = 50, Width = 150};
@@ -436,12 +582,24 @@ namespace GeneralFunctions
             {
                 for (int i = 0; i < listbox.Items.Count; i++)
                     listbox.SetSelected(i, true);
+                
+                // Update tracking set with all currently visible items
+                foreach (object item in listbox.Items)
+                {
+                    selectedItemsSet.Add(item.ToString());
+                }
             };
 
             selectNoneButton.Click += delegate
             {
                 for (int i = 0; i < listbox.Items.Count; i++)
                     listbox.SetSelected(i, false);
+                
+                // Remove all currently visible items from tracking set
+                foreach (object item in listbox.Items)
+                {
+                    selectedItemsSet.Remove(item.ToString());
+                }
             };
 
             buttonPanel.Controls.Add(selectAllButton);
@@ -449,8 +607,10 @@ namespace GeneralFunctions
             buttonPanel.Controls.Add(okButton);
             buttonPanel.Controls.Add(cancelButton);
 
-            form.Controls.Add(listbox);
-            form.Controls.Add(buttonPanel);
+            // Add controls in proper order for Dock: Bottom first, Top second, Fill last
+            form.Controls.Add(buttonPanel);    // Bottom - add first
+            form.Controls.Add(searchPanel);    // Top - add second
+            form.Controls.Add(listBoxPanel);   // Fill - add last
 
             form.Width = customWidth;
             form.Height = customHeight;
@@ -640,10 +800,39 @@ namespace GeneralFunctions
         public static IList<string> SelectMeasureMultiple(Model model, IEnumerable<Measure> measures = null, string label = "Select Measure(s)")
         {
             measures ??= model.AllMeasures;
-            IList<string> measureNames = measures.Select(m => m.DaxObjectFullName).ToList();
-            IList<string> selectedMeasureNames = ChooseStringMultiple(measureNames, label: label);
-            return selectedMeasureNames; 
             
+            // Create display strings with format: TableName\DisplayFolder\[MeasureName]
+            var measureDisplayMap = new Dictionary<string, string>();
+            var displayList = new List<string>();
+            
+            foreach (var measure in measures.OrderBy(m => m.Table.Name).ThenBy(m => m.DisplayFolder).ThenBy(m => m.Name))
+            {
+                string displayString;
+                if (string.IsNullOrEmpty(measure.DisplayFolder))
+                {
+                    displayString = String.Format("{0}\\[{1}]", measure.Table.Name, measure.Name);
+                }
+                else
+                {
+                    displayString = String.Format("{0}\\{1}\\[{2}]", measure.Table.Name, measure.DisplayFolder, measure.Name);
+                }
+                
+                measureDisplayMap[displayString] = measure.DaxObjectFullName;
+                displayList.Add(displayString);
+            }
+            
+            // Show the display list to user
+            var selectedDisplayStrings = ChooseStringMultiple(displayList, label: label);
+            
+            if (selectedDisplayStrings == null || selectedDisplayStrings.Count == 0)
+                return new List<string>();
+            
+            // Map back to DaxObjectFullName
+            var selectedMeasureNames = selectedDisplayStrings
+                .Select(display => measureDisplayMap[display])
+                .ToList();
+            
+            return selectedMeasureNames;
         }
 
         public static IList<string> SelectColumnMultiple(Model model, IEnumerable<Column> columns = null, string label = "Select Columns(s)")

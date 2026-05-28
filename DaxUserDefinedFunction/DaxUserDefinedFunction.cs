@@ -20,7 +20,9 @@ namespace DaxUserDefinedFunction
         public string OutputType { get; set; }
         public string OutputDisplayFolder { get; set; }
 
-        public string OutputDestination { get; set; } 
+        public string OutputDestination { get; set; }
+        public string OutputProperties { get; set; }
+        public string OutputPropertyNames { get; set; }
         public Function OriginalFunction { get; set; }
         public List<FunctionParameter> Parameters { get; set; }
         private static List<FunctionParameter> ExtractParametersFromExpression(string expression)
@@ -102,6 +104,14 @@ namespace DaxUserDefinedFunction
             string nameTemplateDefault = "";
             string formatStringDefault = "";
             string displayFolderDefault = "";
+            string functionGroupName = function.Name;
+            
+            var nameParts = function.Name.Split('.');
+            if (nameParts.Length > 1)
+            {
+                functionGroupName = nameParts[1];
+            }
+            
             string functionNameShort = function.Name;
             string destinationDefault = ""; 
 
@@ -110,22 +120,28 @@ namespace DaxUserDefinedFunction
                 functionNameShort = function.Name.Substring(function.Name.LastIndexOf(".") + 1);
             }
 
+            string outputPropertiesDefault = "";
+            string outputPropertyNamesDefault = "";
+            
             if (Parameters.Count == 0) {
                 nameTemplateDefault = function.Name;
                 formatStringDefault = "";
                 displayFolderDefault = "";
                 destinationDefault = "";
+                outputPropertiesDefault = functionNameShort;
+                outputPropertyNamesDefault = functionNameShort;
             }
             else
             {
-                nameTemplateDefault = string.Join(" ", Parameters.Select(p => p.Name + "Name"));
-                if(function.Name.Contains("Pct"))
+                nameTemplateDefault = string.Join(" ", Parameters.Select(p => p.Name + "Name")) + " " + functionNameShort;
+                
+                if(function.Name.IndexOf("Pct", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     formatStringDefault = "+0.0%;-0.0%;-";
                 }
                 else
                 {
-                    formatStringDefault = Parameters[0].Name + "FormatStringRoot";
+                    formatStringDefault = Parameters[0].Name + "FormatStringFull";
                 }
 
 
@@ -135,7 +151,7 @@ namespace DaxUserDefinedFunction
                         @"{0}DisplayFolder/{1}Name {2}", 
                         Parameters[0].Name, 
                         Parameters[0].Name,
-                        functionNameShort);
+                        functionGroupName);
                 
                 if (Parameters[0].Name.ToUpper().Contains("TABLE"))
                 {
@@ -150,6 +166,8 @@ namespace DaxUserDefinedFunction
                     destinationDefault = "Custom";
                 }
                 
+                outputPropertiesDefault = string.Join("|", Parameters.Select(p => p.Name + "Name")) + "|" + functionNameShort;
+                outputPropertyNamesDefault = string.Join("|", Parameters.Select(p => p.Name)) + "|" + functionGroupName;
 
             };
             
@@ -161,6 +179,8 @@ namespace DaxUserDefinedFunction
             string myFormatString = function.GetAnnotation("formatString");
             string myDisplayFolder = function.GetAnnotation("displayFolder");
             string myOutputDestination = function.GetAnnotation("outputDestination");
+            string myOutputProperties = function.GetAnnotation("outputProperties");
+            string myOutputPropertyNames = function.GetAnnotation("outputPropertyNames");
 
             if (completeMetadata)
             {
@@ -219,6 +239,30 @@ namespace DaxUserDefinedFunction
                         function.SetAnnotation("outputDestination", destinationDefault);
                     }
                 }
+
+                if (string.IsNullOrEmpty(myOutputProperties))
+                {
+                    myOutputProperties =
+                        Fx.GetNameFromUser(
+                            Prompt: "Enter output properties template for " + function.Name,
+                            Title: "Output Properties",
+                            DefaultResponse: outputPropertiesDefault);
+
+                    if (string.IsNullOrEmpty(myOutputProperties)) return emptyFunction;
+                    function.SetAnnotation("outputProperties", myOutputProperties);
+                }
+
+                if (string.IsNullOrEmpty(myOutputPropertyNames))
+                {
+                    myOutputPropertyNames =
+                        Fx.GetNameFromUser(
+                            Prompt: "Enter output property names for " + function.Name,
+                            Title: "Output Property Names",
+                            DefaultResponse: outputPropertyNamesDefault);
+
+                    if (string.IsNullOrEmpty(myOutputPropertyNames)) return emptyFunction;
+                    function.SetAnnotation("outputPropertyNames", myOutputPropertyNames);
+                }
             }
 
             var functionExtended = new FunctionExtended
@@ -232,6 +276,8 @@ namespace DaxUserDefinedFunction
                 OutputType = myOutputType,
                 OutputDisplayFolder = myDisplayFolder,
                 OutputDestination = myOutputDestination,
+                OutputProperties = myOutputProperties,
+                OutputPropertyNames = myOutputPropertyNames,
                 OriginalFunction = function
 
             };
