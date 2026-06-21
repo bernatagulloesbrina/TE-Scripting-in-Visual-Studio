@@ -180,14 +180,57 @@ namespace ReportFunctions
 
         public static string GetPbirFilePathWithHistory(string label = "Select definition.pbir file")
         {
+            // Detect reports currently open in Power BI Desktop (PBIR/PBIP format, via pbir CLI)
+            PbirDesktopStatus pbirStatus;
+            string pbirMessage;
+            List<string> openReports = GetOpenPbirReportPaths(out pbirStatus, out pbirMessage);
+
+            // Inform the user when pbir is missing or the Desktop preview feature is off
+            if (!string.IsNullOrEmpty(pbirMessage))
+            {
+                Info(pbirMessage);
+            }
+
             // Load recent paths
             List<string> recentPaths = LoadRecentPbirPaths();
 
             // Filter out non-existing files
             recentPaths = recentPaths.Where(File.Exists).ToList();
 
-            // Present options to the user
-            var options = new List<string>(recentPaths);
+            // If exactly one report is open in Desktop, use it directly (skip manual selection)
+            if (openReports.Count == 1)
+            {
+                string autoPath = openReports[0];
+                UpdateRecentPbirPaths(autoPath, recentPaths);
+                return autoPath;
+            }
+
+            // More than one PBIP report is open => the right target is ambiguous. Warn the user
+            // so they consciously pick the one matching the model they are working on.
+            if (openReports.Count > 1)
+            {
+                Info(MultipleInstancesMessage(openReports.Count));
+            }
+
+            // Present options to the user: currently-open reports first (clearly marked),
+            // then recent paths, then browse. Several Desktop instances => several open reports.
+            const string openPrefix = "\u25CF [Open in Power BI Desktop]  ";
+            var displayToPath = new Dictionary<string, string>();
+            var options = new List<string>();
+
+            foreach (string p in openReports)
+            {
+                string display = openPrefix + p;
+                if (!displayToPath.ContainsKey(display))
+                {
+                    displayToPath[display] = p;
+                    options.Add(display);
+                }
+            }
+            foreach (string p in recentPaths)
+            {
+                if (!options.Contains(p) && !displayToPath.ContainsValue(p)) options.Add(p);
+            }
             options.Add("Browse for new file...");
 
             string selected = Fx.ChooseString(options,label:label, customWidth:600, customHeight:300);
@@ -198,6 +241,10 @@ namespace ReportFunctions
             if (selected == "Browse for new file..." )
             {
                 chosenPath = GetPbirFilePath(label);
+            }
+            else if (displayToPath.ContainsKey(selected))
+            {
+                chosenPath = displayToPath[selected];
             }
             else
             {
@@ -240,6 +287,285 @@ namespace ReportFunctions
             // Ensure directory exists
             Directory.CreateDirectory(Path.GetDirectoryName(RecentPathsFile));
             File.WriteAllText(RecentPathsFile, JsonConvert.SerializeObject(recentPaths, Newtonsoft.Json.Formatting.Indented));
+        }
+
+        // Outcome of probing Power BI Desktop through the pbir CLI.
+        public enum PbirDesktopStatus
+        {
+            Ready,           // pbir ran and the local API responded (feature enabled)
+            NotInstalled,    // the pbir executable could not be found
+            FeatureDisabled, // pbir ran but the Desktop local-API preview feature is off / unavailable
+            ThickReportOnly, // pbir ran but the only open report(s) are thick (.pbix), not PBIR
+            Error            // any other failure (could not read or parse the response)
+        }
+
+        // Captures the result of launching an external process.
+        private sealed class PbirProcResult
+        {
+            public bool Started;   // false => executable not found / could not start
+            public string StdOut;
+            public string StdErr;
+        }
+
+        // Returns the definition.pbir path(s) of the report(s) currently open in Power BI Desktop.
+        // Uses the 'pbir' CLI (https://github.com/Kurt-Buhler/pbir). Returns an empty list if the
+        // CLI is unavailable, the Desktop preview feature is off, no Desktop instance is open, or
+        // only thick (.pbix) reports are open.
+        public static List<string> GetOpenPbirReportPaths()
+        {
+            PbirDesktopStatus status;
+            string message;
+            return GetOpenPbirReportPaths(out status, out message);
+        }
+
+        // Overload that also reports why detection succeeded or failed via 'status' and a
+        // user-facing 'message' (null when no message is needed, e.g. detection worked).
+        public static List<string> GetOpenPbirReportPaths(out PbirDesktopStatus status, out string message)
+        {
+            var result = new List<string>();
+            status = PbirDesktopStatus.Error;
+            message = null;
+
+            // 1) Check that the pbir CLI is installed
+            PbirProcResult run = RunPbir("desktop list --json");
+            if (run == null || !run.Started)
+            {
+                status = PbirDesktopStatus.NotInstalled;
+                message =
+                    "Auto-detection of the open report is unavailable because the 'pbir' CLI was not found.\n\n" +
+                    "Install it with:  uv tool install pbir-cli\n\n" +
+                    "Falling back to manual selection.";
+                return result;
+            }
+
+            // 2) Check that Power BI Desktop's local API responded (preview feature enabled)
+            string output = run.StdOut;
+            if (!LooksLikeJson(output))
+            {
+                string combined = ((output ?? "") + " " + (run.StdErr ?? "")).ToLowerInvariant();
+                if (combined.Contains("secure local") || combined.Contains("external tool") ||
+                    combined.Contains("preview") || combined.Contains("not enabled"))
+                {
+                    status = PbirDesktopStatus.FeatureDisabled;
+                    message = FeatureDisabledMessage();
+                }
+                else
+                {
+                    status = PbirDesktopStatus.Error;
+                    message = "Could not read Power BI Desktop status from pbir. Falling back to manual selection.";
+                }
+                return result;
+            }
+
+            try
+            {
+                var root = Newtonsoft.Json.Linq.JObject.Parse(output);
+                string apiStatus = (string)root["status"];
+
+                if (!string.IsNullOrEmpty(apiStatus) &&
+                    !apiStatus.Equals("ready", StringComparison.OrdinalIgnoreCase))
+                {
+                    status = PbirDesktopStatus.FeatureDisabled;
+                    message = FeatureDisabledMessage();
+                    return result;
+                }
+
+                status = PbirDesktopStatus.Ready;
+
+                var instances = root["instances"] as Newtonsoft.Json.Linq.JArray;
+                if (instances != null)
+                {
+                    foreach (var inst in instances)
+                    {
+                        string reportDir = (string)inst["reportDir"];
+                        string currentFilePath = (string)inst["currentFilePath"];
+                        string pbir = DerivePbirPath(reportDir, currentFilePath);
+                        if (pbir != null && !result.Contains(pbir)) result.Add(pbir);
+                    }
+                }
+
+                // pbir's 'desktop list' only surfaces PBIP reports; thick (.pbix) reports never
+                // appear there. Detect them by comparing the number of open Power BI Desktop
+                // report windows against the number of PBIP reports pbir reported.
+                int openWindowCount = CountOpenDesktopReportWindows();
+                int thickCount = openWindowCount - result.Count;
+                if (thickCount < 0) thickCount = 0;
+
+                if (result.Count == 0 && thickCount > 0)
+                {
+                    // Only thick (.pbix) report(s) are open - none can be used
+                    status = PbirDesktopStatus.ThickReportOnly;
+                    message = ThickReportMessage();
+                }
+                else if (result.Count > 0 && thickCount > 0)
+                {
+                    // A mix of PBIR and thick (.pbix) reports is open - warn that .pbix are ignored
+                    message = MixedReportsMessage(thickCount);
+                }
+            }
+            catch
+            {
+                status = PbirDesktopStatus.Error;
+                message = "Could not parse Power BI Desktop status from pbir. Falling back to manual selection.";
+            }
+
+            return result;
+        }
+
+        private static string FeatureDisabledMessage()
+        {
+            return
+                "Auto-detection of the open report is unavailable because Power BI Desktop's local API did not respond.\n\n" +
+                "Please make sure that:\n" +
+                "  1. Power BI Desktop is running with the report open, and\n" +
+                "  2. The preview feature is enabled:\n" +
+                "       File > Options and settings > Options > Preview features >\n" +
+                "       'Enable external tool access to Power BI Desktop through secure local APIs'\n\n" +
+                "Falling back to manual selection.";
+        }
+
+        private static string ThickReportMessage()
+        {
+            return
+                "The report currently open in Power BI Desktop is a thick report (.pbix), " +
+                "so it cannot be auto-detected or edited by the report-layer scripts.\n\n" +
+                "These scripts require the PBIR (enhanced report format) on disk. To use them:\n" +
+                "  1. In Power BI Desktop: File > Save as > Power BI project (.pbip), and\n" +
+                "  2. Enable PBIR under File > Options > Preview features > 'Store reports using enhanced metadata format (PBIR)'.\n\n" +
+                "Falling back to manual selection.";
+        }
+
+        private static string MixedReportsMessage(int thickCount)
+        {
+            string plural = thickCount == 1 ? "report is" : "reports are";
+            return String.Format(
+                "Note: {0} thick (.pbix) {1} also open in Power BI Desktop.\n\n" +
+                "Thick reports cannot be edited by the report-layer scripts, so only the " +
+                "PBIR (.pbip) report(s) are being considered.",
+                thickCount, plural);
+        }
+
+        private static string MultipleInstancesMessage(int openCount)
+        {
+            return String.Format(
+                "Warning: {0} Power BI Desktop reports (PBIP) are currently open.\n\n" +
+                "Auto-detection cannot tell which one matches the model you are working on, " +
+                "so please pick the intended report from the list. Reports currently open in " +
+                "Power BI Desktop are marked with a bullet at the top.",
+                openCount);
+        }
+
+        // Counts the report windows currently open in Power BI Desktop. Each open report is a
+        // PBIDesktop.exe process with a non-empty main window title; thick (.pbix) reports are
+        // counted here even though pbir's 'desktop list' does not report them.
+        private static int CountOpenDesktopReportWindows()
+        {
+            try
+            {
+                return System.Diagnostics.Process.GetProcessesByName("PBIDesktop")
+                    .Select(p => { try { return p.MainWindowTitle; } catch { return null; } })
+                    .Where(t => !string.IsNullOrEmpty(t))
+                    .Distinct()
+                    .Count();
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+        // location (~/.local/bin/pbir.exe). Started=false means pbir is not installed.
+        private static PbirProcResult RunPbir(string arguments)
+        {
+            PbirProcResult r = RunCommandCapture("pbir", arguments);
+            if (r.Started) return r;
+
+            string fallback = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".local", "bin", "pbir.exe");
+            if (File.Exists(fallback))
+            {
+                return RunCommandCapture(fallback, arguments);
+            }
+
+            return r; // Started = false
+        }
+
+        private static PbirProcResult RunCommandCapture(string fileName, string arguments)
+        {
+            var r = new PbirProcResult();
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+
+                using (var proc = System.Diagnostics.Process.Start(psi))
+                {
+                    r.Started = true;
+                    r.StdOut = proc.StandardOutput.ReadToEnd();
+                    r.StdErr = proc.StandardError.ReadToEnd();
+                    proc.WaitForExit(15000);
+                }
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                r.Started = false; // executable not found
+            }
+            catch
+            {
+                r.Started = false;
+            }
+            return r;
+        }
+
+        private static bool LooksLikeJson(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return false;
+            string t = s.TrimStart();
+            return t.StartsWith("{") || t.StartsWith("[");
+        }
+
+        // Maps a pbir instance (reportDir / currentFilePath) to an existing definition.pbir path.
+        private static string DerivePbirPath(string reportDir, string currentFilePath)
+        {
+            // Case 1: pbir already resolved the report folder
+            if (!string.IsNullOrEmpty(reportDir))
+            {
+                if (reportDir.EndsWith(".pbir", StringComparison.OrdinalIgnoreCase) && File.Exists(reportDir))
+                    return reportDir;
+
+                string candidate = Path.Combine(reportDir, "definition.pbir");
+                if (File.Exists(candidate)) return candidate;
+            }
+
+            // Case 2: derive the report folder from an open .pbip project
+            if (!string.IsNullOrEmpty(currentFilePath) &&
+                currentFilePath.EndsWith(".pbip", StringComparison.OrdinalIgnoreCase))
+            {
+                string dir = Path.GetDirectoryName(currentFilePath);
+                string name = Path.GetFileNameWithoutExtension(currentFilePath);
+
+                string candidate = Path.Combine(dir, name + ".Report", "definition.pbir");
+                if (File.Exists(candidate)) return candidate;
+
+                try
+                {
+                    foreach (string reportFolder in Directory.GetDirectories(dir, "*.Report"))
+                    {
+                        string c = Path.Combine(reportFolder, "definition.pbir");
+                        if (File.Exists(c)) return c;
+                    }
+                }
+                catch { }
+            }
+
+            return null;
         }
 
 
@@ -531,6 +857,36 @@ namespace ReportFunctions
                 Directory.CreateDirectory(visualFolder);
             }
             File.WriteAllText(visual.VisualFilePath, newJson);
+        }
+
+        // Pushes the just-saved on-disk report changes into the open Power BI Desktop instance via the
+        // pbir CLI (https://github.com/Kurt-Buhler/pbir), so report-layer scripts reflect their edits on
+        // the canvas without a manual reopen. The report is assumed valid (it was already initialised).
+        public static void UpdateDesktop(ReportExtended report)
+        {
+            // PagesFilePath is <Name>.Report/definition/pages/pages.json; walk up three levels to reach
+            // the report folder (<Name>.Report), which is what 'pbir desktop reload' expects as its path.
+            string reportDir =
+                Path.GetDirectoryName(
+                    Path.GetDirectoryName(
+                        Path.GetDirectoryName(report.PagesFilePath)));
+
+            PbirProcResult run = RunPbir(String.Format("desktop reload \"{0}\"", reportDir));
+
+            // Note: do NOT show a modal dialog (Info) here. Reloading the Power BI Desktop instance
+            // that Tabular Editor is live-connected to queues a "connection changed" event. A modal
+            // dialog pumps the message loop, letting TE process that event mid-macro, which resets
+            // TE's undo manager and causes "EndBatch() called before BeginBatch()" when the macro
+            // ends. Writing to the output pane avoids the nested message loop.
+            if (run != null && run.Started)
+            {
+                Output("Power BI Desktop reloaded the report canvas from disk.");
+            }
+            else
+            {
+                Output("Changes saved to disk. Reopen the report in Power BI Desktop to see them " +
+                    "(the 'pbir' CLI was not found for automatic reload; install it with 'uv tool install pbir-cli').");
+            }
         }
 
 

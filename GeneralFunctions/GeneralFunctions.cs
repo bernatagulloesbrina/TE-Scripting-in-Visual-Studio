@@ -209,6 +209,7 @@ namespace GeneralFunctions
             form.Controls.Add(buttonPanel);
 
             // Show dialog
+            ResetWaitCursor();
             DialogResult result = form.ShowDialog();
 
             if (result == DialogResult.Cancel)
@@ -369,8 +370,26 @@ namespace GeneralFunctions
             }
         }
 
+        // In TE2 scripts run inside an "Hourglass" that sets Application.UseWaitCursor = true for the
+        // whole application, so dialog boxes show a busy cursor (TE3 solves this with WaitFormVisible).
+        // Turn the flag off and nudge Windows (WM_SETCURSOR) to refresh the cursor immediately,
+        // otherwise it only updates on the next mouse message. Call this before showing any dialog.
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);
+
+        public static void ResetWaitCursor()
+        {
+            if (!Application.UseWaitCursor) return;
+            Application.UseWaitCursor = false;
+            Cursor.Current = Cursors.Default;
+            Form f = Form.ActiveForm;
+            if (f != null && f.Handle != IntPtr.Zero)
+                SendMessage(f.Handle, 0x20, f.Handle, (IntPtr)1); // WM_SETCURSOR
+        }
+
         public static string GetNameFromUser(string Prompt, string Title, string DefaultResponse)
         {
+            ResetWaitCursor();
             string response = Interaction.InputBox(Prompt, Title, DefaultResponse, 740, 400);
             if (response == null)
             {
@@ -383,6 +402,7 @@ namespace GeneralFunctions
 
         public static bool IsAnswerYes(string question, string title = "Please confirm")
         {
+            ResetWaitCursor();
             var result = MessageBox.Show(question, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             return result == DialogResult.Yes;
         }
@@ -615,6 +635,7 @@ namespace GeneralFunctions
             form.Width = customWidth;
             form.Height = customHeight;
 
+            ResetWaitCursor();
             DialogResult result = form.ShowDialog();
             if (result == DialogResult.Cancel)
             {

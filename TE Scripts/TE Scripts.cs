@@ -2411,6 +2411,7 @@ namespace TE_Scripting
         }
         void applyDisplayNames()
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
             //using GeneralFunctions;
             //using Report.DTO;
             //using System.IO;
@@ -2533,6 +2534,8 @@ namespace TE_Scripting
             }
 
             Output(String.Format("Updated {0} display names in {1} visuals of the report.", updatedCount, visualsUpdated));
+
+            Rx.UpdateDesktop(report);
         }
         void storeDisplayNames()
         {
@@ -2735,6 +2738,7 @@ namespace TE_Scripting
         }
         void copyConditionalFormatting()
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
 
             //using GeneralFunctions;
             //using Report.DTO;
@@ -2858,9 +2862,12 @@ namespace TE_Scripting
 
             Rx.SaveVisual(selectedVisual);
             Output(String.Format(@"{0} headers updated with formatting from '{1}'.", updatedCount, sourceHeader));
+
+            Rx.UpdateDesktop(report);
         }
         void adjustLineOverColumns()
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
             //using GeneralFunctions;
             //using Report.DTO;
             //using ReportFunctions;
@@ -3270,8 +3277,9 @@ namespace TE_Scripting
             Rx.SaveVisual(selectedVisual);
             Info("Visual on page '" 
                 + selectedVisual.ParentPage.Page.DisplayName 
-                + "' has been modified. Close and reopen the report to see the changes"); 
+                + "' has been modified."); 
 
+            Rx.UpdateDesktop(report);
         }
         void createTimeIntelFunctions()
         {
@@ -3477,6 +3485,7 @@ namespace TE_Scripting
         
         void copyHeaderFormatting()
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
 
             //using GeneralFunctions;
             //using Report.DTO;
@@ -3588,6 +3597,8 @@ namespace TE_Scripting
 
             Rx.SaveVisual(selectedVisual);
             Output(String.Format(@"{0} headers updated with formatting from '{1}'.", updatedCount, sourceHeader));
+
+            Rx.UpdateDesktop(report);
         }
         
         
@@ -3660,6 +3671,7 @@ namespace TE_Scripting
         
         void removeEmptyFolders()
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
             //using System.IO;
             //using Newtonsoft.Json.Linq;
             //using Report.DTO;
@@ -3713,10 +3725,13 @@ namespace TE_Scripting
             }
 
             Info(String.Format("Removed {0} empty visual folders.", removedCount));
+
+            Rx.UpdateDesktop(report);
         }
 
         void AddBilingualLayerToReport()
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
             //using GeneralFunctions;
             //using Report.DTO;
             //using System.IO;
@@ -3827,6 +3842,8 @@ namespace TE_Scripting
             }
 
             Output(String.Format("Bilingual visual groups created for {0} visuals.",totalCount));
+
+            Rx.UpdateDesktop(report);
         }
 
 
@@ -4099,6 +4116,7 @@ namespace TE_Scripting
         
         void replaceField() 
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
 
             //2025-05-25/B.Agullo
             //provided a definition.pbir file, this script allows the user to replace a measure in all visuals that use it with another measure.
@@ -4193,14 +4211,13 @@ namespace TE_Scripting
 
             Output($"{modifiedVisuals.Count} visuals were modified.");
 
-
-
-
+            Rx.UpdateDesktop(report);
         }
 
 
         void fixBrokenFields()
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
             //using GeneralFunctions;
             //using Report.DTO;
             //using System.IO;
@@ -4310,6 +4327,8 @@ namespace TE_Scripting
             }
 
             Output($"{modifiedVisuals.Count} visuals were modified.");
+
+            Rx.UpdateDesktop(report);
         }
 
         
@@ -4317,6 +4336,7 @@ namespace TE_Scripting
 
         void changeCoordinatesOfVisual()
         {
+            // 2026-06-21 / B.Agullo: now updates the report directly in Power BI Desktop without reopening it.
             //using GeneralFunctions;
             //using Report.DTO;
             //using System.IO;
@@ -4348,6 +4368,7 @@ namespace TE_Scripting
 
             Rx.SaveVisual(visual);
 
+            Rx.UpdateDesktop(report);
         }
                           
                
