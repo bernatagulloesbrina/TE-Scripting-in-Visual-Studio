@@ -406,10 +406,11 @@ namespace GeneralFunctions
             var result = MessageBox.Show(question, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             return result == DialogResult.Yes;
         }
-        public static (IList<string> Values, string Type) SelectAnyObjects(Model model, string selectionType = null, string prompt1 = "select item type", string prompt2 = "select item(s)", string placeholderValue = "")
+        public const string DefaultSentinel = "<<USE_DEFAULT>>";
+
+        public static (IList<string> Values, string Type) SelectAnyObjects(Model model, string selectionType = null, string prompt1 = "select item type", string prompt2 = "select item(s)", string placeholderValue = "", string defaultValue = null, string description = null)
         {
 
-            
             var returnEmpty = (Values: new List<string>(), Type: (string)null);
 
             if (prompt1.Contains("{0}"))
@@ -421,7 +422,7 @@ namespace GeneralFunctions
 
             if (selectionType == null)
             {
-                IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "Scalar" };
+                IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "Calendar", "Scalar", "Text" };
                 selectionType = ChooseString(selectionTypeOptions, label: prompt1, customWidth: 600);
             }
 
@@ -431,20 +432,33 @@ namespace GeneralFunctions
             switch (selectionType)
             {
                 case "Table":
-                    selectedValues = SelectTableMultiple(model, label: prompt2);
+                    selectedValues = SelectTableMultiple(model, label: prompt2, defaultValue: defaultValue, description: description);
                     break;
                 case "Column":
-                    selectedValues = SelectColumnMultiple(model, label: prompt2);
+                    selectedValues = SelectColumnMultiple(model, label: prompt2, defaultValue: defaultValue, description: description);
                     break;
                 case "Measure":
 
-                    selectedValues = SelectMeasureMultiple(model: model, label: prompt2);
+                    selectedValues = SelectMeasureMultiple(model: model, label: prompt2, defaultValue: defaultValue, description: description);
 
+                    break;
+                case "Calendar":
+                    selectedValues = SelectCalendarMultiple(model, label: prompt2, defaultValue: defaultValue, description: description);
                     break;
                 case "Scalar":
                     IList<string> scalarList = new List<string>();
-                    scalarList.Add(GetNameFromUser(prompt2, "Scalar value", "0"));
+                    scalarList.Add(GetNameFromUser(prompt2, "Scalar value", defaultValue ?? "0"));
                     selectedValues = scalarList;
+                    break;
+                case "Text":
+                    IList<string> textList = new List<string>();
+                    string textValue = GetNameFromUser(prompt2, "Text value", defaultValue ?? "");
+                    if (textValue == null) return returnEmpty;
+                    // Wrap in double quotes if not already a quoted DAX string literal
+                    if (!(textValue.StartsWith("\"") && textValue.EndsWith("\"")))
+                        textValue = "\"" + textValue + "\"";
+                    textList.Add(textValue);
+                    selectedValues = textList;
                     break;
                 default:
                     Error("Invalid selection type");
@@ -452,7 +466,12 @@ namespace GeneralFunctions
 
 
             }
-            if (selectedValues == null || selectedValues.Count == 0) return returnEmpty; 
+            if (selectedValues == null || selectedValues.Count == 0) return returnEmpty;
+
+            // Default-value option selected: return empty value so the argument is left blank (default used)
+            if (selectedValues.Count == 1 && selectedValues[0] == DefaultSentinel)
+                return (Values: new List<string>() { "" }, Type: selectionType);
+
             return (Values:selectedValues, Type:selectionType);
         }
 
@@ -462,12 +481,12 @@ namespace GeneralFunctions
             return ChooseStringInternal(OptionList, MultiSelect: false, label: label, customWidth: customWidth, customHeight:customHeight) as string;
         }
 
-        public static List<string> ChooseStringMultiple(IList<string> OptionList, string label = "Choose item(s)", int customWidth = 650, int customHeight = 550)
+        public static List<string> ChooseStringMultiple(IList<string> OptionList, string label = "Choose item(s)", int customWidth = 650, int customHeight = 550, string defaultValue = null, string description = null)
         {
-            return ChooseStringInternal(OptionList, MultiSelect:true, label:label, customWidth: customWidth, customHeight: customHeight) as List<string>;
+            return ChooseStringInternal(OptionList, MultiSelect:true, label:label, customWidth: customWidth, customHeight: customHeight, defaultValue: defaultValue, description: description) as List<string>;
         }
 
-        private static object ChooseStringInternal(IList<string> OptionList, bool MultiSelect, string label = "Choose item(s)", int customWidth = 400, int customHeight = 500)
+        private static object ChooseStringInternal(IList<string> OptionList, bool MultiSelect, string label = "Choose item(s)", int customWidth = 400, int customHeight = 500, string defaultValue = null, string description = null)
         {
             Form form = new Form
             {
@@ -506,11 +525,47 @@ namespace GeneralFunctions
             searchPanel.Controls.Add(searchLabel);
             searchPanel.Controls.Add(searchBox);
 
+            // Optional info panel: parameter description and "use default" checkbox
+            CheckBox useDefaultCheck = null;
+            Panel infoPanel = null;
+            int infoPanelHeight = 0;
+            if (!string.IsNullOrEmpty(description) || !string.IsNullOrEmpty(defaultValue))
+            {
+                infoPanel = new Panel { Dock = DockStyle.Top, Padding = new Padding(0, 0, 0, 5) };
+                int infoY = 0;
+                if (!string.IsNullOrEmpty(description))
+                {
+                    Label descLabel = new System.Windows.Forms.Label
+                    {
+                        Text = description,
+                        Location = new System.Drawing.Point(0, infoY),
+                        Width = customWidth - 60,
+                        Height = 36,
+                        Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
+                    };
+                    infoPanel.Controls.Add(descLabel);
+                    infoY += 40;
+                    infoPanelHeight += 40;
+                }
+                if (!string.IsNullOrEmpty(defaultValue))
+                {
+                    useDefaultCheck = new CheckBox
+                    {
+                        Text = String.Format("Use default ({0})", defaultValue),
+                        Location = new System.Drawing.Point(0, infoY),
+                        AutoSize = true
+                    };
+                    infoPanel.Controls.Add(useDefaultCheck);
+                    infoPanelHeight += 30;
+                }
+                infoPanel.Height = infoPanelHeight;
+            }
+
             // ListBox panel in the middle
             Panel listBoxPanel = new Panel
             {
                 Dock = DockStyle.Fill,
-                Padding = new Padding(0, 35, 0, 75)  // Top padding = searchPanel height, Bottom = buttonPanel height
+                Padding = new Padding(0, 35 + infoPanelHeight, 0, 75)  // Top padding = info + searchPanel height, Bottom = buttonPanel height
             };
 
             ListBox listbox = new ListBox
@@ -630,10 +685,24 @@ namespace GeneralFunctions
             // Add controls in proper order for Dock: Bottom first, Top second, Fill last
             form.Controls.Add(buttonPanel);    // Bottom - add first
             form.Controls.Add(searchPanel);    // Top - add second
+            if (infoPanel != null) form.Controls.Add(infoPanel);  // Top - sits above search panel
             form.Controls.Add(listBoxPanel);   // Fill - add last
 
+            // When "use default" is checked, disable the list/search to make clear the default will be used
+            if (useDefaultCheck != null)
+            {
+                useDefaultCheck.CheckedChanged += delegate
+                {
+                    bool useDefault = useDefaultCheck.Checked;
+                    listbox.Enabled = !useDefault;
+                    searchBox.Enabled = !useDefault;
+                    selectAllButton.Enabled = !useDefault;
+                    selectNoneButton.Enabled = !useDefault;
+                };
+            }
+
             form.Width = customWidth;
-            form.Height = customHeight;
+            form.Height = customHeight + infoPanelHeight;
 
             ResetWaitCursor();
             DialogResult result = form.ShowDialog();
@@ -641,6 +710,12 @@ namespace GeneralFunctions
             {
                 Info("You Cancelled!");
                 return null;
+            }
+
+            // Default checkbox checked: signal default usage to the caller
+            if (useDefaultCheck != null && useDefaultCheck.Checked)
+            {
+                return MultiSelect ? (object)new List<string>() { DefaultSentinel } : (object)DefaultSentinel;
             }
 
             if (MultiSelect)
@@ -818,7 +893,7 @@ namespace GeneralFunctions
 
         }
 
-        public static IList<string> SelectMeasureMultiple(Model model, IEnumerable<Measure> measures = null, string label = "Select Measure(s)")
+        public static IList<string> SelectMeasureMultiple(Model model, IEnumerable<Measure> measures = null, string label = "Select Measure(s)", string defaultValue = null, string description = null)
         {
             measures ??= model.AllMeasures;
             
@@ -843,10 +918,14 @@ namespace GeneralFunctions
             }
             
             // Show the display list to user
-            var selectedDisplayStrings = ChooseStringMultiple(displayList, label: label);
+            var selectedDisplayStrings = ChooseStringMultiple(displayList, label: label, defaultValue: defaultValue, description: description);
             
             if (selectedDisplayStrings == null || selectedDisplayStrings.Count == 0)
                 return new List<string>();
+
+            // Pass through the default sentinel unchanged
+            if (selectedDisplayStrings.Count == 1 && selectedDisplayStrings[0] == DefaultSentinel)
+                return selectedDisplayStrings;
             
             // Map back to DaxObjectFullName
             var selectedMeasureNames = selectedDisplayStrings
@@ -856,22 +935,45 @@ namespace GeneralFunctions
             return selectedMeasureNames;
         }
 
-        public static IList<string> SelectColumnMultiple(Model model, IEnumerable<Column> columns = null, string label = "Select Columns(s)")
+        public static IList<string> SelectColumnMultiple(Model model, IEnumerable<Column> columns = null, string label = "Select Columns(s)", string defaultValue = null, string description = null)
         {
             columns ??= model.AllColumns;
             IList<string> columnNames = columns.Select(m => m.DaxObjectFullName).ToList();
-            IList<string> selectedColumnNames = ChooseStringMultiple(columnNames, label: label);
+            IList<string> selectedColumnNames = ChooseStringMultiple(columnNames, label: label, defaultValue: defaultValue, description: description);
             return selectedColumnNames;
 
         }
 
-        public static IList<string> SelectTableMultiple(Model model, IEnumerable<Table> Tables = null, string label = "Select Tables(s)", int customWidth = 400)
+        public static IList<string> SelectTableMultiple(Model model, IEnumerable<Table> Tables = null, string label = "Select Tables(s)", int customWidth = 400, string defaultValue = null, string description = null)
         {
             Tables ??= model.Tables;
             IList<string> TableNames = Tables.Select(m => m.DaxObjectFullName).ToList();
-            IList<string> selectedTableNames = ChooseStringMultiple(TableNames, label: label, customWidth: customWidth);
+            IList<string> selectedTableNames = ChooseStringMultiple(TableNames, label: label, customWidth: customWidth, defaultValue: defaultValue, description: description);
             return selectedTableNames;
 
+        }
+
+        public static IList<string> SelectCalendarMultiple(Model model, string label = "Select Calendar(s)", string defaultValue = null, string description = null)
+        {
+            // Build a display->reference map: display is the calendar name, reference is quoted 'Name'
+            var calendarMap = new Dictionary<string, string>();
+            var displayList = new List<string>();
+            foreach (var calendar in model.AllCalendars.OrderBy(c => c.Name))
+            {
+                string display = calendar.Name;
+                calendarMap[display] = "'" + calendar.Name + "'";
+                displayList.Add(display);
+            }
+
+            var selectedDisplay = ChooseStringMultiple(displayList, label: label, defaultValue: defaultValue, description: description);
+            if (selectedDisplay == null || selectedDisplay.Count == 0)
+                return new List<string>();
+
+            // Pass through the default sentinel unchanged
+            if (selectedDisplay.Count == 1 && selectedDisplay[0] == DefaultSentinel)
+                return selectedDisplay;
+
+            return selectedDisplay.Select(d => calendarMap[d]).ToList();
         }
 
 

@@ -1318,17 +1318,25 @@ namespace TE_Scripting
             foreach (var param in distinctParameters)
             {
                 string selectionType = null;
-                if (param.Name.ToUpper().Contains("MEASURE"))
+                if (param.Type == "CALENDARREF" || param.Name.ToUpper().EndsWith("CALENDAR"))
+                {
+                    selectionType = "Calendar";
+                }
+                else if (param.Type == "MEASUREREF" || param.Name.ToUpper().Contains("MEASURE"))
                 {
                     selectionType = "Measure";
                 }
-                else if (param.Name.ToUpper().Contains("COLUMN"))
+                else if (param.Type == "COLUMNREF" || param.Name.ToUpper().Contains("COLUMN"))
                 {
                     selectionType = "Column";
                 }
-                else if (param.Name.ToUpper().Contains("TABLE"))
+                else if (param.Type == "TABLEREF" || param.Name.ToUpper().Contains("TABLE"))
                 {
                     selectionType = "Table";
+                }
+                else if (param.Name.ToUpper().Contains("TEXT") || param.Name.ToUpper().Contains("STRING"))
+                {
+                    selectionType = "Text";
                 }
 
 
@@ -1337,7 +1345,9 @@ namespace TE_Scripting
                     selectionType: selectionType,
                     prompt1: String.Format(@"Select object type for {0} parameter", param.Name),
                     prompt2: String.Format(@"Select item for {0} parameter", param.Name),
-                    placeholderValue: param.Name
+                    placeholderValue: param.Name,
+                    defaultValue: param.DefaultValue,
+                    description: param.Description
 
                 );
 
@@ -1426,8 +1436,15 @@ namespace TE_Scripting
 
                             string paramTablePlaceholder = "";
 
+                            // Empty value means the parameter default is used: keep the comma (blank arg)
+                            bool useDefault = string.IsNullOrEmpty(o);
 
-                            if (paramObject.Type == "Measure")
+                            if (useDefault)
+                            {
+                                paramName = "";
+                                paramTablePlaceholder = param.Name;
+                            }
+                            else if (paramObject.Type == "Measure")
                             {
                                 Measure m = Model.AllMeasures.FirstOrDefault(m => m.DaxObjectFullName == o);
                                 paramName = m.Name;
@@ -1462,6 +1479,18 @@ namespace TE_Scripting
                                 paramProperties = t.GetAnnotation("Properties") ?? "";
                                 paramPropertyNames = t.GetAnnotation("PropertyNames") ?? "";
 
+                                paramTablePlaceholder = param.Name;
+                            }
+                            else if (paramObject.Type == "Calendar")
+                            {
+                                // o is the quoted calendar reference ('Name'); strip quotes for the display name
+                                paramName = o.Trim('\'');
+                                paramTablePlaceholder = param.Name;
+                            }
+                            else
+                            {
+                                // Scalar / Text: use the value itself (strip quotes) as the display name
+                                paramName = o.Trim('"');
                                 paramTablePlaceholder = param.Name;
                             }
 

@@ -39,20 +39,52 @@ namespace DaxUserDefinedFunction
 
             string paramSection = expression.Substring(openParenIndex + 1, closeParenIndex - openParenIndex - 1);
             var paramList = new List<FunctionParameter>();
-            var paramStrings = paramSection.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
 
-            foreach (var param in paramStrings)
+            // Split parameters preserving per-line layout so that an end-of-line comment can be
+            // captured as the parameter description (only when there is one parameter per line).
+            var paramStrings = paramSection.IndexOf('\n') >= 0
+                ? paramSection.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                : paramSection.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var rawParam in paramStrings)
             {
-                var trimmed = param.Trim();
+                var param = rawParam.Trim().TrimEnd(',');
+                string description = null;
+
+                // Extract end-of-line comment (// ...) as the parameter description
+                int commentIndex = param.IndexOf("//");
+                if (commentIndex >= 0)
+                {
+                    description = param.Substring(commentIndex + 2).Trim();
+                    param = param.Substring(0, commentIndex);
+                }
+
+                // Extract default value if present (param: TYPE = defaultExpression)
+                string defaultValue = null;
+                int equalsIndex = param.IndexOf('=');
+                if (equalsIndex >= 0)
+                {
+                    defaultValue = param.Substring(equalsIndex + 1).Trim().TrimEnd(',').Trim();
+                    param = param.Substring(0, equalsIndex);
+                }
+
+                var trimmed = param.Trim().TrimEnd(',').Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
                 var nameParams = trimmed.Split(new[] { ':' }, StringSplitOptions.RemoveEmptyEntries);
                 //var parts = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
                 var fp = new FunctionParameter();
+                fp.DefaultValue = defaultValue;
+                fp.Description = description;
                 fp.Name = nameParams.Length > 0 ? nameParams[0].Trim() : param.Trim();
                 fp.Type =
                     (nameParams.Length == 1) ? "ANYVAL" :
                     (nameParams.Length > 1) ?
-                        (nameParams[1].IndexOf("anyVal", StringComparison.OrdinalIgnoreCase) >= 0 ? "ANYVAL" :
+                        (nameParams[1].IndexOf("calendarRef", StringComparison.OrdinalIgnoreCase) >= 0 ? "CALENDARREF" :
+                         nameParams[1].IndexOf("measureRef", StringComparison.OrdinalIgnoreCase) >= 0 ? "MEASUREREF" :
+                         nameParams[1].IndexOf("columnRef", StringComparison.OrdinalIgnoreCase) >= 0 ? "COLUMNREF" :
+                         nameParams[1].IndexOf("tableRef", StringComparison.OrdinalIgnoreCase) >= 0 ? "TABLEREF" :
+                         nameParams[1].IndexOf("anyVal", StringComparison.OrdinalIgnoreCase) >= 0 ? "ANYVAL" :
                          nameParams[1].IndexOf("Scalar", StringComparison.OrdinalIgnoreCase) >= 0 ? "SCALAR" :
                          nameParams[1].IndexOf("Table", StringComparison.OrdinalIgnoreCase) >= 0 ? "TABLE" :
                          nameParams[1].IndexOf("AnyRef", StringComparison.OrdinalIgnoreCase) >= 0 ? "ANYREF" :
@@ -80,7 +112,7 @@ namespace DaxUserDefinedFunction
                     paramMode = "VAL";
                 else if (trimmed.IndexOf("EXPR", StringComparison.OrdinalIgnoreCase) >= 0)
                     paramMode = "EXPR";
-                else if (fp.Type == "ANYREF")
+                else if (fp.Type == "ANYREF" || fp.Type.EndsWith("REF"))
                 {
                     paramMode = "EXPR";
                 }else
@@ -294,6 +326,8 @@ namespace DaxUserDefinedFunction
         public string Type { get; set; }
         public string Subtype { get; set; }
         public string ParameterMode { get; set; }
+        public string DefaultValue { get; set; }
+        public string Description { get; set; }
     }
 
     
