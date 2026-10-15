@@ -1248,6 +1248,7 @@ namespace TE_Scripting
 
         void SingleMeasureParameterFunction()
         {
+            //2026-10-15 / B.Agullo / added support for dataCategory annotation (measures only)
             //2026-03-29 / B.Agullo / added support for propertyNames annotation
             //2026-02-15 / B.Agullo / improved default function annotation values and added support for output properties annotation.
             //2025-09-26/B.Agullo/ fixed bug that would not store annotations if initialized during runtime
@@ -1385,6 +1386,9 @@ namespace TE_Scripting
                 IList<string> previousOutputPropertyNames = new List<string>() { func.OutputPropertyNames };
                 IList<string> currentOutputPropertyNames = new List<string>();
 
+                IList<string> previousDataCategories = new List<string>() { func.OutputDataCategory ?? "" };
+                IList<string> currentDataCategories = new List<string>();
+
                 // When iterating the parameters of this specific function, use the mapping created for distinct parameters.
                 foreach (var param in func.Parameters)
                 {
@@ -1395,6 +1399,7 @@ namespace TE_Scripting
                     currentDisplayFolders = new List<string>();
                     currentOutputProperties = new List<string>();
                     currentOutputPropertyNames = new List<string>();
+                    currentDataCategories = new List<string>();
 
                     // Retrieve the objects list for this parameter name from the map (prompting was done earlier)
                     (IList<string> Values, string Type) paramObject;
@@ -1413,6 +1418,7 @@ namespace TE_Scripting
                         string sDestination = previousDestinations[i];
                         string sOutputProperties = previousOutputProperties[i];
                         string sOutputPropertyNames = previousOutputPropertyNames[i];
+                        string sDataCategory = previousDataCategories[i];
 
                         foreach (var o in paramObject.Values)
                         {
@@ -1424,6 +1430,7 @@ namespace TE_Scripting
                             string paramTable = "";
                             string paramProperties = "";
                             string paramPropertyNames = "";
+                            string paramDataCategory = "";
 
                             //prepare placeholder
                             string paramNamePlaceholder = param.Name + "Name";
@@ -1432,6 +1439,7 @@ namespace TE_Scripting
                             string paramDisplayFolderPlaceholder = param.Name + "DisplayFolder";
                             string paramPropertiesPlaceholder = param.Name + "Properties";
                             string paramPropertyNamesPlaceholder = param.Name + "PropertyNames";
+                            string paramDataCategoryPlaceholder = param.Name + "DataCategory";
 
 
                             string paramTablePlaceholder = "";
@@ -1453,6 +1461,7 @@ namespace TE_Scripting
                                 paramTable = m.Table.DaxObjectFullName;
                                 paramProperties = m.GetAnnotation("Properties") ?? "";
                                 paramPropertyNames = m.GetAnnotation("PropertyNames") ?? "";
+                                paramDataCategory = m.DataCategory ?? "";
 
                                 paramTablePlaceholder = param.Name + "Table";
 
@@ -1466,6 +1475,7 @@ namespace TE_Scripting
                                 paramTable = c.Table.DaxObjectFullName;
                                 paramProperties = c.GetAnnotation("Properties") ?? "";
                                 paramPropertyNames = c.GetAnnotation("PropertyNames") ?? "";
+                                paramDataCategory = c.DataCategory ?? "";
 
                                 paramTablePlaceholder = param.Name + "Table";
                             }
@@ -1531,6 +1541,9 @@ namespace TE_Scripting
                                 sOutputPropertyNames
                                     .Replace(paramPropertyNamesPlaceholder, paramPropertyNames));
 
+                            currentDataCategories.Add(
+                                sDataCategory.Replace(paramDataCategoryPlaceholder, paramDataCategory));
+
 
                         }
 
@@ -1545,6 +1558,7 @@ namespace TE_Scripting
                     previousFormatStrings = currentFormatStrings;
                     previousOutputProperties = currentOutputProperties;
                     previousOutputPropertyNames = currentOutputPropertyNames;
+                    previousDataCategories = currentDataCategories;
                 }
 
 
@@ -1600,7 +1614,13 @@ namespace TE_Scripting
                         {
                             measure.SetAnnotation("PropertyNames", currentOutputPropertyNames[i]);
                         }
-                        
+
+                        // Set data category unless Uncategorized (empty data category in the model)
+                        if (!string.IsNullOrEmpty(currentDataCategories[i]) && currentDataCategories[i] != "Uncategorized")
+                        {
+                            measure.DataCategory = currentDataCategories[i];
+                        }
+
                         totalMeasuresCreated++;
                     }
 

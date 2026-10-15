@@ -23,7 +23,15 @@ namespace DaxUserDefinedFunction
         public string OutputDestination { get; set; }
         public string OutputProperties { get; set; }
         public string OutputPropertyNames { get; set; }
+        public string OutputDataCategory { get; set; }
         public Function OriginalFunction { get; set; }
+
+        // Data categories accepted by Power BI for measures (TOM values). "Uncategorized" means no data category.
+        public static readonly IList<string> DataCategories = new List<string>
+        {
+            "Uncategorized", "Address", "Place", "City", "County", "StateOrProvince", "PostalCode",
+            "Country", "Continent", "Latitude", "Longitude", "WebUrl", "ImageUrl", "Barcode"
+        };
         public List<FunctionParameter> Parameters { get; set; }
         private static List<FunctionParameter> ExtractParametersFromExpression(string expression)
         {
@@ -213,6 +221,7 @@ namespace DaxUserDefinedFunction
             string myOutputDestination = function.GetAnnotation("outputDestination");
             string myOutputProperties = function.GetAnnotation("outputProperties");
             string myOutputPropertyNames = function.GetAnnotation("outputPropertyNames");
+            string myDataCategory = function.GetAnnotation("dataCategory");
 
             if (completeMetadata)
             {
@@ -268,7 +277,7 @@ namespace DaxUserDefinedFunction
                                 DefaultResponse: destinationDefault);
 
                         if (string.IsNullOrEmpty(myOutputDestination)) return emptyFunction;
-                        function.SetAnnotation("outputDestination", destinationDefault);
+                        function.SetAnnotation("outputDestination", myOutputDestination);
                     }
                 }
 
@@ -295,6 +304,28 @@ namespace DaxUserDefinedFunction
                     if (string.IsNullOrEmpty(myOutputPropertyNames)) return emptyFunction;
                     function.SetAnnotation("outputPropertyNames", myOutputPropertyNames);
                 }
+
+                if (string.IsNullOrEmpty(myDataCategory) && myOutputType == "Measure")
+                {
+                    // fixed categories plus one placeholder per parameter that may reference a measure or column,
+                    // which resolves to the data category of the selected object
+                    IList<string> dataCategoryOptions = new List<string>(DataCategories);
+                    foreach (var p in Parameters.Where(p =>
+                        p.Type == "MEASUREREF" || p.Type == "COLUMNREF" || p.Type == "ANYREF"
+                        || p.Name.ToUpper().Contains("MEASURE") || p.Name.ToUpper().Contains("COLUMN")))
+                    {
+                        dataCategoryOptions.Add(p.Name + "DataCategory");
+                    }
+
+                    myDataCategory =
+                        Fx.ChooseString(
+                            OptionList: dataCategoryOptions,
+                            label: "Choose output data category for function " + function.Name,
+                            customWidth: 600);
+
+                    if (string.IsNullOrEmpty(myDataCategory)) return emptyFunction;
+                    function.SetAnnotation("dataCategory", myDataCategory);
+                }
             }
 
             var functionExtended = new FunctionExtended
@@ -310,6 +341,7 @@ namespace DaxUserDefinedFunction
                 OutputDestination = myOutputDestination,
                 OutputProperties = myOutputProperties,
                 OutputPropertyNames = myOutputPropertyNames,
+                OutputDataCategory = myDataCategory,
                 OriginalFunction = function
 
             };
