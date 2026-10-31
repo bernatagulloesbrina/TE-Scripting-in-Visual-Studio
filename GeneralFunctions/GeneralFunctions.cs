@@ -944,6 +944,93 @@ namespace GeneralFunctions
 
         }
 
+        // ENV helpers: used in the #if TECLI branch of macros so agents can pass inputs through environment variables.
+        // Lists are separated by ';'. All return null (after an Error) when the variable is missing or a value can't be resolved,
+        // except when a defaultValue is given, which is used if the variable is missing or empty.
+
+        // Raw string value, e.g. a name for a new measure or table
+        public static string GetStringFromEnv(string envVar, string defaultValue = null)
+        {
+            string value = Environment.GetEnvironmentVariable(envVar);
+            if (!String.IsNullOrWhiteSpace(value)) return value;
+            if (defaultValue != null) return defaultValue;
+            Error("Environment variable " + envVar + " is not set.");
+            return null;
+        }
+
+        // Several string values separated by ';'
+        public static List<string> GetStringsFromEnv(string envVar)
+        {
+            string value = GetStringFromEnv(envVar);
+            if (value == null) return null;
+            return value.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToList();
+        }
+
+        // true/false, yes/no or 1/0 (answer to a Yes/No question)
+        public static bool? GetBoolFromEnv(string envVar, bool? defaultValue = null)
+        {
+            string value = GetStringFromEnv(envVar, defaultValue.HasValue ? defaultValue.Value.ToString() : null);
+            if (value == null) return null;
+            switch (value.Trim().ToLower())
+            {
+                case "true": case "yes": case "y": case "1": return true;
+                case "false": case "no": case "n": case "0": return false;
+            }
+            Error("Environment variable " + envVar + " must be true or false, not '" + value + "'.");
+            return null;
+        }
+
+        // Resolves each ';'-separated reference against the candidates using the given name forms
+        private static List<T> GetObjectsFromEnv<T>(string envVar, IEnumerable<T> candidates, Func<T, string[]> names, string kind)
+        {
+            List<string> references = GetStringsFromEnv(envVar);
+            if (references == null) return null;
+            var result = new List<T>();
+            foreach (string reference in references)
+            {
+                T obj = candidates.FirstOrDefault(c => names(c).Contains(reference));
+                if (obj == null) { Error(kind + " " + reference + " (from " + envVar + ") not found."); return null; }
+                result.Add(obj);
+            }
+            return result;
+        }
+
+        // 'Sales'[Amount] or Sales[Amount]
+        public static List<Column> GetColumnsFromEnv(Model model, string envVar)
+        {
+            return GetObjectsFromEnv(envVar, model.AllColumns, c => new[] { c.DaxObjectFullName, c.Table.Name + "[" + c.Name + "]" }, "Column");
+        }
+
+        // [Sales Amount], Sales Amount or 'Sales'[Sales Amount]
+        public static List<Measure> GetMeasuresFromEnv(Model model, string envVar)
+        {
+            return GetObjectsFromEnv(envVar, model.AllMeasures, m => new[] { m.DaxObjectFullName, m.Name, m.Table.DaxObjectFullName + m.DaxObjectFullName }, "Measure");
+        }
+
+        // 'Sales' or Sales
+        public static List<Table> GetTablesFromEnv(Model model, string envVar)
+        {
+            return GetObjectsFromEnv(envVar, model.Tables, t => new[] { t.DaxObjectFullName, t.Name }, "Table");
+        }
+
+        // Function name, e.g. Local.TimeIntel.YTD
+        public static List<Function> GetFunctionsFromEnv(Model model, string envVar)
+        {
+            return GetObjectsFromEnv(envVar, model.Functions, f => new[] { f.Name }, "Function");
+        }
+
+        // Single-object versions: the variable must hold exactly one reference
+        public static Column GetColumnFromEnv(Model model, string envVar) { return Single(GetColumnsFromEnv(model, envVar), envVar); }
+        public static Measure GetMeasureFromEnv(Model model, string envVar) { return Single(GetMeasuresFromEnv(model, envVar), envVar); }
+        public static Table GetTableFromEnv(Model model, string envVar) { return Single(GetTablesFromEnv(model, envVar), envVar); }
+
+        private static T Single<T>(List<T> list, string envVar) where T : class
+        {
+            if (list == null) return null;
+            if (list.Count != 1) { Error("Environment variable " + envVar + " must contain exactly one reference."); return null; }
+            return list[0];
+        }
+
         public static IList<string> SelectTableMultiple(Model model, IEnumerable<Table> Tables = null, string label = "Select Tables(s)", int customWidth = 400, string defaultValue = null, string description = null)
         {
             Tables ??= model.Tables;
