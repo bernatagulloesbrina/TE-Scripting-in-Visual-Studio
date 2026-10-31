@@ -37,6 +37,8 @@ namespace TE_Scripting
 {
     public class TE_Scripts
     {
+        
+        
         void SUM()
         {
             //using GeneralFunctions;
@@ -5110,7 +5112,9 @@ namespace TE_Scripting
             string generalFunctionsClassFilePath,
             string reportClassFilePath,
             string reportFunctionsClassFilePath,
-            string daxUserDefinedFunctionClassFilePath
+            string daxUserDefinedFunctionClassFilePath,
+            string macroName = null,
+            string outputFilePath = null
             )
         {
             //#r "System.IO"
@@ -5122,6 +5126,7 @@ namespace TE_Scripting
             //using Microsoft.CodeAnalysis.CSharp.Syntax;
             //using System.Text.RegularExpressions;
 
+            // '2026-10-31 / B.Agullo / Optional macroName and outputFilePath skip the dialog and write the code to a file instead of the clipboard (used to publish macros)
             // '2026-10-29 / B.Agullo / Helper methods not reached in CLI mode are wrapped in #if !TECLI so skill-ready macros compile in te
             // '2023-11-25 / B.Agullo / Fixed the code to combine references from general functions correctly
             // '2023-05-06 / B.Agullo / 
@@ -5142,6 +5147,8 @@ namespace TE_Scripting
             //String reportClassFilePath = String.Format(@"{0}\Report\Report.cs", baseFolderPath);
             //String daxUserDefinedFunctionClassFilePath = String.Format(@"{0}\DaxUserDefinedFunction\DaxUserDefinedFunction.cs", baseFolderPath);
             //String reportFunctionsClassFilePath = String.Format(@"{0}\ReportFunctions\ReportFunctions.cs", baseFolderPath);
+            //String macroName = null;
+            //String outputFilePath = null;
             String codeIndent = "            ";
             String noCopyMark = "NOCOPY";
             ////these libraries are already loaded in Tabular Editor and must not be specified
@@ -5219,14 +5226,19 @@ namespace TE_Scripting
                 return;
             }
 
-            //let the user select the name of the macro to copy
-            String select = SelectString(macroNames, "Choose a macro");
+            //let the user select the name of the macro to copy, unless it was passed
+            String select = macroName ?? SelectString(macroNames, "Choose a macro");
 
             //check that indeed one macro was selected
             if (select == null)
             {
                 Info("You cancelled!");
                 return;
+            }
+
+            if (!macroNames.Contains(select))
+            {
+                throw new ArgumentException("Macro '" + select + "' not found in " + macroFilePath);
             }
 
             //get the method
@@ -5579,8 +5591,15 @@ namespace TE_Scripting
                 macroCodeClean3 = GuardInteractiveOnlyMethods(macroCodeClean3);
             }
 
-            //copy the code to the clipboard
-            Clipboard.SetText(macroCodeClean3);
+            //copy the code to the clipboard, or to the output file if one was passed
+            if (outputFilePath != null)
+            {
+                File.WriteAllText(outputFilePath, macroCodeClean3);
+            }
+            else
+            {
+                Clipboard.SetText(macroCodeClean3);
+            }
 
 
         }

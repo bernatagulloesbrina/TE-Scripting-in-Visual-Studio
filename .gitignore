@@ -361,3 +361,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Claude Code per-machine settings (paths such as TE_PUBLISH_REPO)
+.claude/settings.local.json
