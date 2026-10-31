@@ -96,5 +96,5 @@ Put it right after the method's `//using` / `//#r` lines and before the changelo
 - Use the IDE diagnostics (the Visual Studio project compiles the `#else` branch; TECLI isn't defined there).
 - Every env variable used in the code is in the `## Inputs` list, with matching names, and the reverse.
 - te has no WinForms / VisualBasic. The TECLI branch, and every Fx / Rx helper it calls (directly or through other helpers), must not use them. CopyMacro wraps the helpers the TECLI branch doesn't reach in `#if !TECLI`, so dialog helpers used only by the `#else` branch are fine.
-- Once the user has copied the macro with CopyMacro and saved it in TE3, `Skills/te-macro-skills/scripts/New-MacroSkills.ps1 -Only <skill name> -WhatIf` checks the header and compiles the macro in te.
+- Once the user has copied the macro with CopyMacro and saved it in TE3, the te-macro-skills skill (te-macros plugin) checks the header and compiles the macro in te: generate with `-Only <skill name> -WhatIf`.
 - Report to the user: the env variables, their defaults, the helpers you added, and anything you couldn't make non-interactive.
