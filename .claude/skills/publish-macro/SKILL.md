@@ -59,11 +59,11 @@ If any of them are missing, add them **to the method in TE Scripts.cs** (not onl
 & "${CLAUDE_SKILL_DIR}\scripts\Copy-Macro.ps1" -Method <METHOD NAME> -OutFile "<publication repo>\<folder>\<file>"
 ```
 
-It builds the `TE Scripts` project and calls `TE_Scripts.CopyMacroFromVSFile` from the built dll, passing the method name and the output file. The code is the same CopyMacro would put on the clipboard in TE: directives merged, GeneralFunctions / ReportFunctions / Report / DaxUserDefinedFunction classes appended when the method uses them, and the helpers the CLI branch doesn't reach wrapped in `#if !TECLI`. Publish that output as is; don't hand-edit the published file.
+It builds the `TE Scripts` project and calls `TE_Scripts.CopyMacroFromVSFile` from the built dll, passing the method name and the output file. The code is the same CopyMacro would put on the clipboard in TE: directives merged, GeneralFunctions / ReportFunctions / Report / DaxUserDefinedFunction classes appended when the method uses them (without the helper methods it never reaches), and the helpers the CLI branch doesn't reach wrapped in `#if !TECLI`. Publish that output as is; don't hand-edit the published file.
 
 ## Step 5 - Check
 
-- The file starts with the directives, then the `// MACRO:` lines (and the `// SKILL:` lines if skill-ready).
+- The file starts with the directives, then the `// MACRO:` lines (and the `// SKILL:` lines if skill-ready). The directives are plain lines, never inside `#if` / `#endif`: TE3 moves them out of the macro and the leftover `#endif` stops every macro in MacroActions.json from loading.
 - Preview the import: `& "<publication repo>\plugins\te-macros\skills\te-macro-skills\scripts\Import-Macros.ps1" "<published file>" -WhatIf`. Status must be `created` or `updated` with no Problems. `-WhatIf` writes nothing.
 - Skill-ready macros: `te script --file "<published file>" --validate --non-interactive` must print `Compilation OK`. If `te` isn't on PATH, use `$env:LOCALAPPDATA\Programs\TabularEditor3\te.exe`.
 - For an update, show `git -C <publication repo> diff --stat`.

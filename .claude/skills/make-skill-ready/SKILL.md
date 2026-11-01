@@ -16,6 +16,8 @@ Reference implementation: the `SUM` method at the top of `TE Scripts/TE Scripts.
 - In the `TECLI` branch, never touch `Selected`, dialogs (`Interaction.InputBox`, `MessageBox`, `SelectTable`, `Fx.ChooseString`, ...) or anything that prompts.
 - The `#else` branch keeps the original interactive code exactly as it was.
 - Header lines must not contain `NOCOPY` (CopyMacro drops those lines) and must not start with `//using` or `//#r`.
+- Never put `#r` or `using` directives (or their `//#r` / `//using` forms) inside `#if` / `#endif`, not even `#if !TECLI` to hide WinForms from te. TE3 moves every macro's directives to the top of the code it compiles from MacroActions.json, so the `#endif` stays behind in the macro body, and then **no macro loads** ("Unexpected preprocessor directive" in MacroActionsError.log). Leave the directives plain at the top; te compiles fine with them. Only code goes inside `#if`.
+- Call TE script helpers directly (`ExecuteReader(dax)`, `Error(...)`, `Info(...)`), never through the model (`Model.Database.ExecuteReader` doesn't exist in TE3 and breaks MacroActions.json the same way). If a helper has no wrapper in TE Scripts.cs, add one next to `Error` / `Info` / `ExecuteReader`.
 
 ## Step 1 - Understand the script
 
@@ -94,6 +96,7 @@ Put it right after the method's `//using` / `//#r` lines and before the changelo
 
 - Both branches compile in your head: same variable names and types after `#endif`, and no `Selected` or prompt in the TECLI branch.
 - Use the IDE diagnostics (the Visual Studio project compiles the `#else` branch; TECLI isn't defined there).
+- No `#r` / `using` directive sits inside an `#if` block. CopyMacro and the te-macros importer refuse the macro if one does, because it would stop TE3 from loading MacroActions.json.
 - Every env variable used in the code is in the `## Inputs` list, with matching names, and the reverse.
 - te has no WinForms / VisualBasic. The TECLI branch, and every Fx / Rx helper it calls (directly or through other helpers), must not use them. CopyMacro wraps the helpers the TECLI branch doesn't reach in `#if !TECLI`, so dialog helpers used only by the `#else` branch are fine.
 - Once the user has copied the macro with CopyMacro and saved it in TE3, the te-macro-skills skill (te-macros plugin) checks the header and compiles the macro in te: generate with `-Only <skill name> -WhatIf`.
