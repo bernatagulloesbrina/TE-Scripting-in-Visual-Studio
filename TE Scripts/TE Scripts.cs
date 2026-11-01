@@ -37,7 +37,47 @@ namespace TE_Scripting
 {
     public class TE_Scripts
     {
-        
+        void HasDataMeasures()
+        {
+            //using GeneralFunctions;
+            // MACRO: Name: Has Data Measures
+            // MACRO: ValidContexts: Table
+            // MACRO: Tooltip: Creates a "<table> has data" measure for each selected table, to show only relevant items in slicers
+            // SKILL: name: has-data-measures
+            // SKILL: description: Create "<table> has data" measures (INT(NOT ISEMPTY('Table'))) for tables of a semantic model. Use when the user asks to show only relevant items in slicers, filter slicers by a fact table, hide slicer items without data, or create "has data" measures.
+            // SKILL:
+            // SKILL: Creates one measure "<table> has data" per table, in that table, with expression INT(NOT ISEMPTY('Table')) and a description. It returns 1 when the table has visible rows in the filter context and 0 otherwise; used as a visual-level filter on a slicer (is 1) it shows only the items that have data in that table. Nothing else in the model is changed.
+            // SKILL:
+            // SKILL: ## Inputs (environment variables)
+            // SKILL: Set these variables before running the macro. Work out each value from the conversation and the model (inspect the model if needed); if a value is unclear, ask the user instead of guessing.
+            // SKILL: - HD_TABLES (required): 'Table' refs (or plain table names) separated by ';'. The tables to check for data, typically fact tables.
+            // SKILL:
+            // SKILL: ## Notes
+            // SKILL: The measure is named "<table> has data"; if a measure with that name already exists in the model, check with the user before running, since measure names must be unique. After running, tell the user to add the measure as a visual-level filter (is 1) on the slicers they want to restrict.
+            // '2026-11-01 / B.Agullo / Agent ready: in CLI mode the tables come from the HD_TABLES environment variable
+            // '2023-06-08 / B.Agullo / Creates a measure to show only relevant items in slicers for a fact table.
+
+#if TECLI
+            var tables = Fx.GetTablesFromEnv(Model, "HD_TABLES");
+            if (tables == null) return;
+#else
+            if(Selected.Tables.Count() == 0)
+            {
+                Error("Select at least one table and try again");
+                return;
+            }
+            var tables = Selected.Tables.ToList();
+#endif
+
+            foreach(Table table in tables)
+            {
+                string measureExpression = String.Format(@"INT(NOT ISEMPTY({0}))",table.DaxObjectFullName);
+                string measureName = table.Name + " has data";
+                string measureDescription = String.Format(@"Returns 1 if {0} has visible rows in filter context, 0 otherwise. Can be used to show only relevant slicer items.", table.DaxObjectFullName);
+                Measure measure = table.AddMeasure(measureName, measureExpression);
+                measure.Description = measureDescription;
+            }
+        }
         void DistinctMeasures()
         {
             //using GeneralFunctions;
@@ -788,7 +828,7 @@ namespace TE_Scripting
 
             string query = "EVALUATE DISTINCT(" + column.DaxObjectFullName + ")";
 
-            using (var reader = Model.Database.ExecuteReader(query))
+            using (var reader = ExecuteReader(query))
             {
                 // Create a loop for every row in the resultset
                 while (reader.Read())
@@ -5637,6 +5677,19 @@ namespace TE_Scripting
                 macroCodeClean3 = GuardInteractiveOnlyMethods(macroCodeClean3);
             }
 
+            //TE3 moves the #r and using directives of every macro to the top of MacroActions.json's compiled code,
+            //so one inside an #if block leaves its #endif behind and no macro loads ("Unexpected preprocessor directive")
+            int ifDepth = 0;
+            foreach (string line in macroCodeClean3.Split('\n').Select(l => l.Trim()))
+            {
+                if (line.StartsWith("#if")) ifDepth++;
+                else if (line.StartsWith("#endif")) ifDepth--;
+                else if (ifDepth > 0 && (line.StartsWith("#r ") || Regex.IsMatch(line, @"^using\s+(static\s+)?[\w.]+(\s*=\s*[\w.<>, ]+)?\s*;$")))
+                {
+                    throw new InvalidOperationException("'" + line + "' is inside an #if block. Move every #r and using directive out of #if / #endif, or TE3 won't load MacroActions.json.");
+                }
+            }
+
             //copy the code to the clipboard, or to the output file if one was passed
             if (outputFilePath != null)
             {
@@ -5704,6 +5757,11 @@ namespace TE_Scripting
         public static void Output(object value, int lineNumber = -1)
         {
             ScriptHelper.Output(value: value, lineNumber: lineNumber);
+        }
+
+        public static System.Data.IDataReader ExecuteReader(string dax)
+        {
+            return ScriptHelper.ExecuteReader(dax: dax);
         }
 
         public static string FormatDax(string dax)

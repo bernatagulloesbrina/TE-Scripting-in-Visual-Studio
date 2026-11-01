@@ -63,7 +63,7 @@ It builds the `TE Scripts` project and calls `TE_Scripts.CopyMacroFromVSFile` fr
 
 ## Step 5 - Check
 
-- The file starts with the directives, then the `// MACRO:` lines (and the `// SKILL:` lines if skill-ready).
+- The file starts with the directives, then the `// MACRO:` lines (and the `// SKILL:` lines if skill-ready). The directives are plain lines, never inside `#if` / `#endif`: TE3 moves them out of the macro and the leftover `#endif` stops every macro in MacroActions.json from loading.
 - Preview the import: `& "<publication repo>\plugins\te-macros\skills\te-macro-skills\scripts\Import-Macros.ps1" "<published file>" -WhatIf`. Status must be `created` or `updated` with no Problems. `-WhatIf` writes nothing.
 - Skill-ready macros: `te script --file "<published file>" --validate --non-interactive` must print `Compilation OK`. If `te` isn't on PATH, use `$env:LOCALAPPDATA\Programs\TabularEditor3\te.exe`.
 - For an update, show `git -C <publication repo> diff --stat`.
