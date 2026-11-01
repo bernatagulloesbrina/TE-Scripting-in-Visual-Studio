@@ -5212,6 +5212,7 @@ namespace TE_Scripting
             //using Microsoft.CodeAnalysis.CSharp.Syntax;
             //using System.Text.RegularExpressions;
 
+            // '2026-11-01 / B.Agullo / Helper methods (Fx, Rx...) the macro never reaches, directly or through other helpers, are removed
             // '2026-10-31 / B.Agullo / Optional macroName and outputFilePath skip the dialog and write the code to a file instead of the clipboard (used to publish macros)
             // '2026-10-29 / B.Agullo / Helper methods not reached in CLI mode are wrapped in #if !TECLI so skill-ready macros compile in te
             // '2023-11-25 / B.Agullo / Fixed the code to combine references from general functions correctly
@@ -5618,6 +5619,53 @@ namespace TE_Scripting
                 macroCodeClean3 += Environment.NewLine + daxUserDefinedFunctionClassCode;
 
             }
+
+            // the methods of the helper classes (Fx, Rx...) that the macro never reaches are removed. Names are matched as plain words
+            // over the raw text, so every #if branch, comment and string counts as a use: when in doubt a method is kept.
+            Func<string, string> RemoveUnusedHelperMethods = (string code) =>
+            {
+                SyntaxTree codeTree = CSharpSyntaxTree.ParseText(code, new CSharpParseOptions(kind: SourceCodeKind.Script));
+                if (codeTree.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error)) return code;
+
+                List<MethodDeclarationSyntax> helperMethods = codeTree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>()
+                    .Where(c => c.Modifiers.Any(SyntaxKind.StaticKeyword))
+                    .SelectMany(c => c.Members.OfType<MethodDeclarationSyntax>())
+                    .ToList();
+
+                Func<string, IEnumerable<string>> WordsOf = (string text) => Regex.Matches(text, @"[A-Za-z_]\w*").Cast<Match>().Select(w => w.Value);
+
+                //everything outside the helper methods (the macro itself, fields, DTO classes...) is the starting point
+                string outsideHelpers = code;
+                foreach (var m in helperMethods.OrderByDescending(m => m.FullSpan.Start))
+                {
+                    outsideHelpers = outsideHelpers.Remove(m.FullSpan.Start, m.FullSpan.Length);
+                }
+                HashSet<string> reached = new HashSet<string>(WordsOf(outsideHelpers));
+
+                //follow the calls between helper methods until nothing new is reached
+                bool added = true;
+                while (added)
+                {
+                    added = false;
+                    foreach (var m in helperMethods.Where(m => reached.Contains(m.Identifier.ValueText)).ToList())
+                    {
+                        foreach (string w in WordsOf(m.ToFullString()))
+                        {
+                            if (reached.Add(w)) added = true;
+                        }
+                    }
+                }
+
+                //methods with a preprocessor directive in them (or in their leading comments) are kept, so no #if loses its #endif
+                foreach (var m in helperMethods.Where(m => !reached.Contains(m.Identifier.ValueText) && !m.ContainsDirectives)
+                    .OrderByDescending(m => m.FullSpan.Start))
+                {
+                    code = code.Remove(m.FullSpan.Start, m.FullSpan.Length);
+                }
+                return code;
+            };
+
+            macroCodeClean3 = RemoveUnusedHelperMethods(macroCodeClean3);
 
             // te (the Tabular Editor CLI) compiles the macro with TECLI defined and has no WinForms, so the helper
             // methods that only the interactive branch reaches are wrapped in #if !TECLI. TE3 still compiles them all.
