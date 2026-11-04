@@ -54,19 +54,32 @@ namespace TE_Scripting
             // SKILL:
             // SKILL: ## Notes
             // SKILL: The measure is named "<table> has data"; if a measure with that name already exists in the model, check with the user before running, since measure names must be unique. After running, tell the user to add the measure as a visual-level filter (is 1) on the slicers they want to restrict.
+            // '2026-11-03 / B.Agullo / CLI mode is also detected at runtime, so the macro runs unattended in the TE2 command line (-S)
             // '2026-11-01 / B.Agullo / Agent ready: in CLI mode the tables come from the HD_TABLES environment variable
             // '2023-06-08 / B.Agullo / Creates a measure to show only relevant items in slicers for a fact table.
 
 #if TECLI
-            var tables = Fx.GetTablesFromEnv(Model, "HD_TABLES");
-            if (tables == null) return;
+            bool cliMode = true;
 #else
-            if(Selected.Tables.Count() == 0)
+            bool cliMode = Fx.IsCliMode();
+#endif
+
+            List<Table> tables = null;
+            if (cliMode)
             {
-                Error("Select at least one table and try again");
-                return;
+                tables = Fx.GetTablesFromEnv(Model, "HD_TABLES");
+                if (tables == null) return;
             }
-            var tables = Selected.Tables.ToList();
+#if !TECLI
+            else
+            {
+                if(Selected.Tables.Count() == 0)
+                {
+                    Error("Select at least one table and try again");
+                    return;
+                }
+                tables = Selected.Tables.ToList();
+            }
 #endif
 
             foreach(Table table in tables)
@@ -95,13 +108,26 @@ namespace TE_Scripting
             // SKILL:
             // SKILL: ## Notes
             // SKILL: The measure is named "Distinct Count of <column>"; if a measure with that name already exists in the model, check with the user before running, since measure names must be unique.
+            // '2026-11-03 / B.Agullo / CLI mode is also detected at runtime, so the macro runs unattended in the TE2 command line (-S)
             // '2026-10-31 / B.Agullo / Agent ready: in CLI mode the columns come from the DC_COLUMNS environment variable
 
 #if TECLI
-            var columns = Fx.GetColumnsFromEnv(Model, "DC_COLUMNS");
-            if (columns == null) return;
+            bool cliMode = true;
 #else
-            var columns = Selected.Columns.ToList();
+            bool cliMode = Fx.IsCliMode();
+#endif
+
+            List<Column> columns = null;
+            if (cliMode)
+            {
+                columns = Fx.GetColumnsFromEnv(Model, "DC_COLUMNS");
+                if (columns == null) return;
+            }
+#if !TECLI
+            else
+            {
+                columns = Selected.Columns.ToList();
+            }
 #endif
 
             // Loop through all target columns:
@@ -142,15 +168,28 @@ namespace TE_Scripting
             // SKILL:
             // SKILL: ## Notes
             // SKILL: Copies FormatString and DisplayFolder from the column and hides the base column.
+            // '2026-11-03 / B.Agullo / CLI mode is also detected at runtime, so the macro runs unattended in the TE2 command line (-S)
             // '2026-10-28 / B.Agullo / Agent ready: in CLI mode the columns come from the SUM_COLUMNS environment variable
             // '2026-02-20 / B.Agullo / Added Properties annotation
             // '1990-01-01 / D.Otykier
 
 #if TECLI
-            var columns = Fx.GetColumnsFromEnv(Model, "SUM_COLUMNS");
-            if (columns == null) return;
+            bool cliMode = true;
 #else
-            var columns = Selected.Columns.ToList();
+            bool cliMode = Fx.IsCliMode();
+#endif
+
+            List<Column> columns = null;
+            if (cliMode)
+            {
+                columns = Fx.GetColumnsFromEnv(Model, "SUM_COLUMNS");
+                if (columns == null) return;
+            }
+#if !TECLI
+            else
+            {
+                columns = Selected.Columns.ToList();
+            }
 #endif
 
             // Loop through all target columns:
@@ -1382,8 +1421,44 @@ namespace TE_Scripting
         }
 
 
-        void SingleMeasureParameterFunction()
+        void MakeMeasuresFromFunctions()
         {
+            //using GeneralFunctions;
+            //using DaxUserDefinedFunction;
+            //using System.Text.RegularExpressions;
+            // MACRO: Name: Make Measures From Functions
+            // MACRO: ValidContexts: Function
+            // MACRO: Tooltip: Creates measures (or calculated columns) by calling the selected DAX user-defined functions with every combination of the chosen objects
+            // SKILL: name: make-measures-from-functions
+            // SKILL: description: Create measures (or calculated columns) from DAX user-defined functions (UDFs), calling each function with every combination of the given measures, columns, tables, calendars or values. Use when the user asks to create measures from functions or UDFs, apply a UDF to several measures, generate time intelligence / variance measures with a function, or bulk-create measures with a function.
+            // SKILL:
+            // SKILL: For each function, builds one call per combination of the values given for its parameters (e.g. 3 measures x 2 calendars = 6 measures) and creates a measure, or a calculated column, with expression Function(arg1, arg2, ...). Name, format string, display folder, destination table, Properties / PropertyNames annotations and data category come from templates stored as annotations on the function (nameTemplate, formatString, displayFolder, outputDestination, outputProperties, outputPropertyNames, dataCategory, outputType). Placeholders such as <param>Name, <param>FormatStringFull, <param>FormatStringRoot, <param>DisplayFolder, <param>Table, <param>Properties, <param>PropertyNames and <param>DataCategory are replaced with the properties of each object passed. Measures get their DAX formatted and a description pointing to the function.
+            // SKILL:
+            // SKILL: ## Inputs (environment variables)
+            // SKILL: Set these variables before running the macro. Work out each value from the conversation and the model (inspect the model if needed); if a value is unclear, ask the user instead of guessing.
+            // SKILL: - MF_FUNCTIONS (required): function names separated by ';', e.g. Local.TimeIntel.YTD. The functions to call.
+            // SKILL: - MF_PARAM_<PARAM> (required, one per distinct parameter name across the functions; <PARAM> is the parameter name in upper case, e.g. MF_PARAM_BASEMEASURE for baseMeasure): the values to iterate for that parameter, separated by ';'. Format by kind: measures as [Measure] or 'Table'[Measure]; columns as 'Table'[Column]; tables as 'Table'; calendars as the calendar name; Scalar as literal DAX values (e.g. 0.5); Text as plain text (it is quoted automatically). Leave it unset or empty to omit the argument and use the parameter's default value, which is only allowed when the parameter has one (param: TYPE = default).
+            // SKILL: - MF_PARAM_<PARAM>_TYPE (required only when the kind can't be inferred): Table, Column, Measure, Calendar, Scalar or Text. The kind is inferred from the parameter type (measureRef, columnRef, tableRef, calendarRef) or from its name (contains MEASURE, COLUMN, TABLE, TEXT or STRING, or ends with CALENDAR); set this variable only for parameters where neither applies (e.g. a numeric anyVal parameter named threshold -> Scalar).
+            // SKILL: - MF_DESTINATION_TABLE (optional, needed only in this case): 'Table' or table name. The table that receives the measures or columns whose destination template doesn't resolve to a model table, e.g. when the destination is "Custom". Leave unset otherwise.
+            // SKILL: - Output settings, one set per function (optional): <FN> is the function name in upper case with every character that is not a letter or digit replaced by '_', e.g. LOCAL_TIMEINTEL_YTD for Local.TimeIntel.YTD. When a variable is unset, the function's annotation is used, or the default below if the function has no such annotation. The values used are saved as annotations on the function, so the next run reuses them.
+            // SKILL:   - MF_OUTPUT_TYPE_<FN> (annotation outputType, default "Measure"): Measure, Column, Table or None. Only Measure and Column are implemented.
+            // SKILL:   - MF_NAME_TEMPLATE_<FN> (annotation nameTemplate): name of each object. Default "<p1>Name <p2>Name ... <short>", or the function name if it has no parameters.
+            // SKILL:   - MF_FORMAT_STRING_<FN> (annotation formatString): format string. Default "+0.0%;-0.0%;-" if the function name contains Pct, otherwise "<p1>FormatStringFull" (format of the first argument); empty if no parameters.
+            // SKILL:   - MF_DISPLAY_FOLDER_<FN> (annotation displayFolder): display folder. Default "<p1>DisplayFolder/<p1>Name <group>"; empty if no parameters.
+            // SKILL:   - MF_DESTINATION_<FN> (annotation outputDestination, Measure and Column only): destination table. Default "<p1>" if the first parameter name contains TABLE, "<p1>Table" (table of the first argument) if it contains MEASURE or COLUMN, otherwise "Custom" (then MF_DESTINATION_TABLE is needed). A literal 'Table' reference also works.
+            // SKILL:   - MF_PROPERTIES_<FN> (annotation outputProperties): value of the Properties annotation of each object. Default "<p1>Name|<p2>Name|...|<short>", or "<short>" if no parameters.
+            // SKILL:   - MF_PROPERTY_NAMES_<FN> (annotation outputPropertyNames): value of the PropertyNames annotation. Default "<p1>|<p2>|...|<group>", or "<short>" if no parameters.
+            // SKILL:   - MF_DATA_CATEGORY_<FN> (annotation dataCategory, Measure only, default "Uncategorized"): Uncategorized, Address, Place, City, County, StateOrProvince, PostalCode, Country, Continent, Latitude, Longitude, WebUrl, ImageUrl, Barcode, or <p>DataCategory for a measure or column parameter (copies the category of the argument).
+            // SKILL:   In the defaults, <p1>, <p2>... are the parameter names in order, <short> is the part of the function name after the last '.', and <group> is the second dot-separated part of the function name (the whole name if it has no '.'). Templates can use these placeholders for any parameter <p>: <p>Name, <p>FormatStringFull, <p>FormatStringRoot (first section of the format, without '+'), <p>DisplayFolder, <p>Table, <p>Properties, <p>PropertyNames, <p>DataCategory.
+            // SKILL:
+            // SKILL: ## Before running: confirm the output settings with the user
+            // SKILL: Read each function's expression and its annotations. For every function, show the user the output settings that will be used (from the annotation if it exists, otherwise the default above), together with an example of the resulting measure name, format and folder for one combination of arguments. Ask the user to confirm them or say what to change, and set the matching MF_..._<FN> variables only for what they change. Do not run the macro until the user has confirmed.
+            // SKILL:
+            // SKILL: ## Notes
+            // SKILL: The MF_PARAM_... and MF_..._<FN> variable names depend on the functions, so the runner warns that they are "not an input" of this skill; that warning is expected and the variables are still passed to the macro. Check that the generated names don't clash with existing measures: measure names must be unique in the model. The number of objects created is the product of the value counts of all parameters, so tell the user the total before running. Values are split on ';', so a single text value can't contain ';'.
+            // '2026-11-03 / B.Agullo / CLI mode is also detected at runtime, so the macro runs unattended in the TE2 command line (-S)
+            // '2026-11-01 / B.Agullo / Agent ready: in CLI mode functions, parameter values, destination table and output settings come from environment variables
+            // '2026-11-01 / B.Agullo / Measure and Uncategorized are preselected when asking for the output type and data category
             //2026-10-15 / B.Agullo / added support for dataCategory annotation (measures only)
             //2026-03-29 / B.Agullo / added support for propertyNames annotation
             //2026-02-15 / B.Agullo / improved default function annotation values and added support for output properties annotation.
@@ -1391,10 +1466,6 @@ namespace TE_Scripting
             //2025-09-16/B.Agullo/
             //Creates measures based on DAX UDFs 
             //Check the blog post for futher information: https://www.esbrina-ba.com/automatically-create-measures-with-dax-user-defined-functions/
-
-            //using GeneralFunctions;
-            //using DaxUserDefinedFunction;
-            //using System.Text.RegularExpressions;
 
 
 #if TE3
@@ -1420,20 +1491,50 @@ namespace TE_Scripting
             // - The dictionary is Dictionary<string, IList<string>> parameterObjectsMap.
             // - Abort execution if any required selection is cancelled.
 
-            // Validate selection
-            if (Selected.Functions.Count() == 0)
+#if TECLI
+            bool cliMode = true;
+#else
+            bool cliMode = Fx.IsCliMode();
+#endif
+
+            List<Function> functions = null;
+            if (cliMode)
             {
-                Error("Select one or more functions and try again.");
-                return;
+                functions = Fx.GetFunctionsFromEnv(Model, "MF_FUNCTIONS");
+                if (functions == null) return;
             }
+#if !TECLI
+            else
+            {
+                // Validate selection
+                if (Selected.Functions.Count() == 0)
+                {
+                    Error("Select one or more functions and try again.");
+                    return;
+                }
+                functions = Selected.Functions.ToList();
+            }
+#endif
 
             // Create FunctionExtended objects for each selected function and store them for later iteration
             IList<FunctionExtended> selectedFunctions = new List<FunctionExtended>();
 
-            foreach (var f in Selected.Functions)
+            foreach (var f in functions)
             {
                 // Create the FunctionExtended and add to list
-                FunctionExtended fe = FunctionExtended.CreateFunctionExtended(f);
+                FunctionExtended fe = null;
+                if (cliMode)
+                {
+                    // output settings come from MF_<KEY>_<FUNCTION> variables
+                    string outputSettingsPrefix = "MF";
+                    fe = FunctionExtended.CreateFunctionExtendedFromEnv(f, outputSettingsPrefix);
+                }
+#if !TECLI
+                else
+                {
+                    fe = FunctionExtended.CreateFunctionExtended(f);
+                }
+#endif
                 if (fe == null) return;
                 selectedFunctions.Add(fe);
             }
@@ -1477,16 +1578,84 @@ namespace TE_Scripting
                 }
 
 
-                (IList<string> Values, string Type) selectedObjectsForParam = Fx.SelectAnyObjects(
-                    Model,
-                    selectionType: selectionType,
-                    prompt1: String.Format(@"Select object type for {0} parameter", param.Name),
-                    prompt2: String.Format(@"Select item for {0} parameter", param.Name),
-                    placeholderValue: param.Name,
-                    defaultValue: param.DefaultValue,
-                    description: param.Description
+                (IList<string> Values, string Type) selectedObjectsForParam = (null, null);
+                if (cliMode)
+                {
+                    string paramEnvVar = "MF_PARAM_" + param.Name.ToUpper();
+                    if (selectionType == null)
+                    {
+                        IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "Calendar", "Scalar", "Text" };
+                        selectionType = Fx.GetStringFromEnv(paramEnvVar + "_TYPE");
+                        if (selectionType == null) return;
+                        if (!selectionTypeOptions.Contains(selectionType))
+                        {
+                            Error(String.Format("Environment variable {0}_TYPE must be one of {1}, not '{2}'.", paramEnvVar, String.Join(", ", selectionTypeOptions), selectionType));
+                            return;
+                        }
+                    }
 
-                );
+                    // Unset or empty with a parameter default: the argument is left blank so the default is used
+                    string paramEnvValue = Fx.GetStringFromEnv(paramEnvVar, defaultValue: param.DefaultValue != null ? "" : null);
+                    if (paramEnvValue == null) return;
+
+                    IList<string> paramValues = null;
+                    if (paramEnvValue == "")
+                    {
+                        paramValues = new List<string>() { "" };
+                    }
+                    else if (selectionType == "Measure")
+                    {
+                        var measures = Fx.GetMeasuresFromEnv(Model, paramEnvVar);
+                        if (measures == null) return;
+                        paramValues = measures.Select(m => m.DaxObjectFullName).ToList();
+                    }
+                    else if (selectionType == "Column")
+                    {
+                        var columns = Fx.GetColumnsFromEnv(Model, paramEnvVar);
+                        if (columns == null) return;
+                        paramValues = columns.Select(c => c.DaxObjectFullName).ToList();
+                    }
+                    else if (selectionType == "Table")
+                    {
+                        var tables = Fx.GetTablesFromEnv(Model, paramEnvVar);
+                        if (tables == null) return;
+                        paramValues = tables.Select(t => t.DaxObjectFullName).ToList();
+                    }
+                    else if (selectionType == "Calendar")
+                    {
+                        var calendars = Fx.GetCalendarsFromEnv(Model, paramEnvVar);
+                        if (calendars == null) return;
+                        paramValues = calendars.Select(c => "'" + c.Name + "'").ToList();
+                    }
+                    else if (selectionType == "Text")
+                    {
+                        // Wrap in double quotes if not already a quoted DAX string literal
+                        paramValues = Fx.GetStringsFromEnv(paramEnvVar)
+                            .Select(t => t.StartsWith("\"") && t.EndsWith("\"") ? t : "\"" + t + "\"")
+                            .ToList();
+                    }
+                    else
+                    {
+                        paramValues = Fx.GetStringsFromEnv(paramEnvVar);
+                    }
+
+                    selectedObjectsForParam = (paramValues, selectionType);
+                }
+#if !TECLI
+                else
+                {
+                    selectedObjectsForParam = Fx.SelectAnyObjects(
+                        Model,
+                        selectionType: selectionType,
+                        prompt1: String.Format(@"Select object type for {0} parameter", param.Name),
+                        prompt2: String.Format(@"Select item for {0} parameter", param.Name),
+                        placeholderValue: param.Name,
+                        defaultValue: param.DefaultValue,
+                        description: param.Description
+
+                    );
+                }
+#endif
 
                 if (selectedObjectsForParam.Values == null || selectedObjectsForParam.Type == null) return; //user cancelled
 
@@ -1714,7 +1883,16 @@ namespace TE_Scripting
 
                         if (destinationTable == null)
                         {
-                            destinationTable = SelectTable(preselect: null, label: $"Select destinatoin table for {func.OutputType} {currentListNames[i]}");
+                            if (cliMode)
+                            {
+                                destinationTable = Fx.GetTableFromEnv(Model, "MF_DESTINATION_TABLE");
+                            }
+#if !TECLI
+                            else
+                            {
+                                destinationTable = SelectTable(preselect: null, label: $"Select destinatoin table for {func.OutputType} {currentListNames[i]}");
+                            }
+#endif
                             if (destinationTable == null) return;
                         }
 
@@ -5674,9 +5852,10 @@ namespace TE_Scripting
                 var cliOptions = new CSharpParseOptions(kind: SourceCodeKind.Script, preprocessorSymbols: new[] { "TECLI" });
                 SyntaxNode cliRoot = CSharpSyntaxTree.ParseText(code, cliOptions).GetRoot();
 
+                //all methods of static classes (Fx, Rx...) plus the static methods of other classes (e.g. FunctionExtended.CreateFunctionExtended)
                 List<MethodDeclarationSyntax> helperMethods = cliRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
-                    .Where(c => c.Modifiers.Any(SyntaxKind.StaticKeyword))
-                    .SelectMany(c => c.Members.OfType<MethodDeclarationSyntax>())
+                    .SelectMany(c => c.Members.OfType<MethodDeclarationSyntax>()
+                        .Where(m => c.Modifiers.Any(SyntaxKind.StaticKeyword) || m.Modifiers.Any(SyntaxKind.StaticKeyword)))
                     .ToList();
 
                 //names used by the macro itself in CLI mode (the #else branch is inactive, so it is not visited)

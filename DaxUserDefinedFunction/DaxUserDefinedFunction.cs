@@ -135,12 +135,9 @@ namespace DaxUserDefinedFunction
 
         
 
-        public static FunctionExtended CreateFunctionExtended(Function function, bool completeMetadata = true)
+        // Default values for the output annotations of a function, derived from its name and parameters
+        private static (string NameTemplate, string FormatString, string DisplayFolder, string Destination, string OutputProperties, string OutputPropertyNames) GetMetadataDefaults(Function function, List<FunctionParameter> Parameters)
         {
-
-            FunctionExtended emptyFunction = null as FunctionExtended;
-            List<FunctionParameter> Parameters =  ExtractParametersFromExpression (function.Expression);
-
             string nameTemplateDefault = "";
             string formatStringDefault = "";
             string displayFolderDefault = "";
@@ -210,9 +207,104 @@ namespace DaxUserDefinedFunction
                 outputPropertyNamesDefault = string.Join("|", Parameters.Select(p => p.Name)) + "|" + functionGroupName;
 
             };
-            
-            
 
+            return (nameTemplateDefault, formatStringDefault, displayFolderDefault, destinationDefault, outputPropertiesDefault, outputPropertyNamesDefault);
+        }
+
+        // Non-interactive version of CreateFunctionExtended, used by skill-ready macros in CLI mode. Each output setting is read from
+        // the environment variable <envPrefix>_<KEY>_<FUNCTION> (function name in upper case, other characters as '_'). When it is
+        // not set, the function's annotation is used, or the default value if there is none. The values used are stored as annotations.
+        public static FunctionExtended CreateFunctionExtendedFromEnv(Function function, string envPrefix)
+        {
+            List<FunctionParameter> Parameters = ExtractParametersFromExpression(function.Expression);
+            var defaults = GetMetadataDefaults(function, Parameters);
+            string envSuffix = "_" + new string(function.Name.ToUpper().Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray());
+
+            string Current(string annotation, string defaultValue)
+            {
+                string value = function.GetAnnotation(annotation);
+                return string.IsNullOrEmpty(value) ? defaultValue : value;
+            }
+
+            string myOutputType = Fx.GetOptionFromEnv(envPrefix + "_OUTPUT_TYPE" + envSuffix,
+                new List<string> { "Table", "Column", "Measure", "None" }, Current("outputType", "Measure"));
+            if (myOutputType == null) return null;
+            function.SetAnnotation("outputType", myOutputType);
+
+            string myNameTemplate = Fx.GetStringFromEnv(envPrefix + "_NAME_TEMPLATE" + envSuffix, Current("nameTemplate", defaults.NameTemplate));
+            function.SetAnnotation("nameTemplate", myNameTemplate);
+
+            string myFormatString = Fx.GetStringFromEnv(envPrefix + "_FORMAT_STRING" + envSuffix, Current("formatString", defaults.FormatString));
+            function.SetAnnotation("formatString", myFormatString);
+
+            string myDisplayFolder = Fx.GetStringFromEnv(envPrefix + "_DISPLAY_FOLDER" + envSuffix, Current("displayFolder", defaults.DisplayFolder));
+            function.SetAnnotation("displayFolder", myDisplayFolder);
+
+            string myOutputDestination = function.GetAnnotation("outputDestination");
+            if (myOutputType == "Table")
+            {
+                if (string.IsNullOrEmpty(myOutputDestination)) myOutputDestination = "Model";
+            }
+            else if (myOutputType == "Column" || myOutputType == "Measure")
+            {
+                myOutputDestination = Fx.GetStringFromEnv(envPrefix + "_DESTINATION" + envSuffix, Current("outputDestination", defaults.Destination));
+                function.SetAnnotation("outputDestination", myOutputDestination);
+            }
+
+            string myOutputProperties = Fx.GetStringFromEnv(envPrefix + "_PROPERTIES" + envSuffix, Current("outputProperties", defaults.OutputProperties));
+            function.SetAnnotation("outputProperties", myOutputProperties);
+
+            string myOutputPropertyNames = Fx.GetStringFromEnv(envPrefix + "_PROPERTY_NAMES" + envSuffix, Current("outputPropertyNames", defaults.OutputPropertyNames));
+            function.SetAnnotation("outputPropertyNames", myOutputPropertyNames);
+
+            string myDataCategory = function.GetAnnotation("dataCategory");
+            if (myOutputType == "Measure")
+            {
+                // same options as in interactive mode: fixed categories plus one placeholder per parameter that may reference a measure or column
+                IList<string> dataCategoryOptions = new List<string>(DataCategories);
+                foreach (var p in Parameters.Where(p =>
+                    p.Type == "MEASUREREF" || p.Type == "COLUMNREF" || p.Type == "ANYREF"
+                    || p.Name.ToUpper().Contains("MEASURE") || p.Name.ToUpper().Contains("COLUMN")))
+                {
+                    dataCategoryOptions.Add(p.Name + "DataCategory");
+                }
+
+                myDataCategory = Fx.GetOptionFromEnv(envPrefix + "_DATA_CATEGORY" + envSuffix, dataCategoryOptions, Current("dataCategory", "Uncategorized"));
+                if (myDataCategory == null) return null;
+                function.SetAnnotation("dataCategory", myDataCategory);
+            }
+
+            return new FunctionExtended
+            {
+                Name = function.Name,
+                Expression = function.Expression,
+                Description = function.Description,
+                Parameters = Parameters,
+                OutputFormatString = myFormatString,
+                OutputNameTemplate = myNameTemplate,
+                OutputType = myOutputType,
+                OutputDisplayFolder = myDisplayFolder,
+                OutputDestination = myOutputDestination,
+                OutputProperties = myOutputProperties,
+                OutputPropertyNames = myOutputPropertyNames,
+                OutputDataCategory = myDataCategory,
+                OriginalFunction = function
+            };
+        }
+
+        public static FunctionExtended CreateFunctionExtended(Function function, bool completeMetadata = true)
+        {
+
+            FunctionExtended emptyFunction = null as FunctionExtended;
+            List<FunctionParameter> Parameters =  ExtractParametersFromExpression (function.Expression);
+
+            var defaults = GetMetadataDefaults(function, Parameters);
+            string nameTemplateDefault = defaults.NameTemplate;
+            string formatStringDefault = defaults.FormatString;
+            string displayFolderDefault = defaults.DisplayFolder;
+            string destinationDefault = defaults.Destination;
+            string outputPropertiesDefault = defaults.OutputProperties;
+            string outputPropertyNamesDefault = defaults.OutputPropertyNames;
 
             string myOutputType = function.GetAnnotation("outputType"); 
             string myNameTemplate = function.GetAnnotation("nameTemplate");
@@ -227,7 +319,8 @@ namespace DaxUserDefinedFunction
             {
                 if (string.IsNullOrEmpty(myOutputType))
                 {
-                    IList<string> selectionTypeOptions = new List<string> { "Table", "Column", "Measure", "None" };
+                    // the first option is preselected, so Measure (the usual output) is the default
+                    IList<string> selectionTypeOptions = new List<string> { "Measure", "Column", "Table", "None" };
                     myOutputType =
                         Fx.ChooseString(
                             OptionList: selectionTypeOptions,
@@ -308,7 +401,7 @@ namespace DaxUserDefinedFunction
                 if (string.IsNullOrEmpty(myDataCategory) && myOutputType == "Measure")
                 {
                     // fixed categories plus one placeholder per parameter that may reference a measure or column,
-                    // which resolves to the data category of the selected object
+                    // which resolves to the data category of the selected object. Uncategorized comes first, so it is preselected
                     IList<string> dataCategoryOptions = new List<string>(DataCategories);
                     foreach (var p in Parameters.Where(p =>
                         p.Type == "MEASUREREF" || p.Type == "COLUMNREF" || p.Type == "ANYREF"
