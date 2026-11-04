@@ -944,6 +944,15 @@ namespace GeneralFunctions
 
         }
 
+        // True when TE2 runs the script from the command line (-S / -SCRIPT). TE2 doesn't define TECLI and shows
+        // Select*/Choose* dialogs modally, which hangs an unattended run. Macros call it in the #else branch of #if TECLI
+        // (te is always CLI mode), so this method has no #if of its own.
+        public static bool IsCliMode()
+        {
+            return Environment.GetCommandLineArgs().Any(a =>
+                a.Equals("-S", StringComparison.OrdinalIgnoreCase) || a.Equals("-SCRIPT", StringComparison.OrdinalIgnoreCase));
+        }
+
         // ENV helpers: used in the #if TECLI branch of macros so agents can pass inputs through environment variables.
         // Lists are separated by ';'. All return null (after an Error) when the variable is missing or a value can't be resolved,
         // except when a defaultValue is given, which is used if the variable is missing or empty.
@@ -964,6 +973,16 @@ namespace GeneralFunctions
             string value = GetStringFromEnv(envVar);
             if (value == null) return null;
             return value.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToList();
+        }
+
+        // One of the given options (answer to a ChooseString). Only a value taken from the variable is checked, not the default
+        public static string GetOptionFromEnv(string envVar, IList<string> options, string defaultValue = null)
+        {
+            if (String.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(envVar))) return GetStringFromEnv(envVar, defaultValue);
+            string value = GetStringFromEnv(envVar);
+            if (options.Contains(value)) return value;
+            Error("Environment variable " + envVar + " must be one of " + String.Join(", ", options) + ", not '" + value + "'.");
+            return null;
         }
 
         // true/false, yes/no or 1/0 (answer to a Yes/No question)
@@ -1017,6 +1036,12 @@ namespace GeneralFunctions
         public static List<Function> GetFunctionsFromEnv(Model model, string envVar)
         {
             return GetObjectsFromEnv(envVar, model.Functions, f => new[] { f.Name }, "Function");
+        }
+
+        // 'Gregorian' or Gregorian
+        public static List<Calendar> GetCalendarsFromEnv(Model model, string envVar)
+        {
+            return GetObjectsFromEnv(envVar, model.AllCalendars, c => new[] { "'" + c.Name + "'", c.Name }, "Calendar");
         }
 
         // Single-object versions: the variable must hold exactly one reference
