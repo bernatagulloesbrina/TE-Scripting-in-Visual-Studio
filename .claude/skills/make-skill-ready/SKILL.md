@@ -122,6 +122,7 @@ Put it right after the method's `//using` / `//#r` lines and before the changelo
 // SKILL: <preconditions (compatibility level, date table, report open...), side effects, anything the agent should check or tell the user>
 ```
 
+- **Input markers**: te-macro-skills reads only the first word inside the parentheses. `(required` makes the generated wrapper refuse to run unless that variable is set, so write `(required` only for a variable that must always be set. When the caller needs only one of several variables (e.g. measures *or* columns), mark each as `(optional, ...)`, explain the rule in a line before the list ("Set exactly one of A or B"), and make the macro fail if none is set. Never write `(required unless ...)` or `(required instead of ...)`: the generator treats them as plain `required`.
 - **Name**: a friendly name in title case; it doesn't have to match the method name.
 - **ValidContexts**: the object types the script acts on in TE, as written in MacroActions.json (`Model`, `Table`, `Column`, `Measure`, `Function`, `Calendar`, ...). Derive them from the `Selected.*` the script uses; use `Model` when it uses no selection. Several values are separated by `, `, e.g. `Measure, Column`.
 - **SKILL name**: lowercase letters, digits and hyphens. It links the skill to the macro across installations, so once published never change it.

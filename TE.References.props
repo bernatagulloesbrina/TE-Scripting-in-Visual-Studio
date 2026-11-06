@@ -1,13 +1,37 @@
 <Project>
+  <!--
+    Tabular Editor 2 references shared by every project in the solution.
+
+    TabularEditor2Dir is the folder holding TabularEditor.exe and TOMWrapper.dll. It defaults to the standard
+    TE2 install folder (C:\Program Files (x86)\Tabular Editor). If TE2 is somewhere else (another drive, the
+    portable zip...), set it once as an environment variable (MSBuild reads environment variables as properties):
+
+      setx TabularEditor2Dir "D:\Tools\TabularEditor"
+
+    then restart Visual Studio / the terminal. Or pass it to a single build: dotnet build -p:TabularEditor2Dir=...
+  -->
   <PropertyGroup>
-    <LocalAppDataPath>$(LocalAppData)\TabularEditor\TOMWrapper14.dll</LocalAppDataPath>
+    <TabularEditor2Dir Condition="'$(TabularEditor2Dir)' == ''">$(MSBuildProgramFiles32)\Tabular Editor</TabularEditor2Dir>
+    <TabularEditor2Dir>$(TabularEditor2Dir.TrimEnd('\'))</TabularEditor2Dir>
+    <!-- TOMWrapper.dll from the TE2 folder; fall back to the copy TE2 writes to %LOCALAPPDATA% the first time it runs a script -->
+    <TOMWrapperPath Condition="'$(TOMWrapperPath)' == '' And Exists('$(TabularEditor2Dir)\TOMWrapper.dll')">$(TabularEditor2Dir)\TOMWrapper.dll</TOMWrapperPath>
+    <TOMWrapperPath Condition="'$(TOMWrapperPath)' == ''">$(LocalAppData)\TabularEditor\TOMWrapper14.dll</TOMWrapperPath>
   </PropertyGroup>
 
   <ItemGroup>
+    <Reference Include="TabularEditor">
+      <HintPath>$(TabularEditor2Dir)\TabularEditor.exe</HintPath>
+    </Reference>
     <Reference Include="TOMWrapper14">
-      <HintPath>$(LocalAppDataPath)</HintPath>
+      <HintPath>$(TOMWrapperPath)</HintPath>
       <Private>false</Private>
     </Reference>
-
   </ItemGroup>
+
+  <Target Name="CheckTabularEditor2References" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(TabularEditor2Dir)\TabularEditor.exe')"
+           Text="Tabular Editor 2 not found in '$(TabularEditor2Dir)'. Install it from https://github.com/TabularEditor/TabularEditor/releases, or set the TabularEditor2Dir environment variable to the folder holding TabularEditor.exe." />
+    <Error Condition="!Exists('$(TOMWrapperPath)')"
+           Text="TOMWrapper.dll not found ('$(TOMWrapperPath)'). Reinstall Tabular Editor 2, or set TOMWrapperPath." />
+  </Target>
 </Project>

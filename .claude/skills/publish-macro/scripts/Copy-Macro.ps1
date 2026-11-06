@@ -12,11 +12,13 @@
 param(
     [Parameter(Mandatory)] [string] $Method,
     [Parameter(Mandatory)] [string] $OutFile,
-    [string] $SolutionFolder = (Resolve-Path "$PSScriptRoot\..\..\..\..").Path,
+    [string] $SolutionFolder,
     [switch] $NoBuild
 )
 
 $ErrorActionPreference = 'Stop'
+# resolved here, not as the parameter default: Windows PowerShell 5.1 leaves $PSScriptRoot empty in param defaults with -File
+if (-not $SolutionFolder) { $SolutionFolder = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path }
 
 $project = Join-Path $SolutionFolder 'TE Scripts\TE Scripts.csproj'
 $binFolder = Join-Path $SolutionFolder 'TE Scripts\bin\Debug\net48'
