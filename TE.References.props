@@ -4,9 +4,10 @@
 
     TabularEditor2Dir is the folder holding TabularEditor.exe and TOMWrapper.dll. It defaults to the standard
     TE2 install folder (C:\Program Files (x86)\Tabular Editor). If TE2 is somewhere else (another drive, the
-    portable zip...), set it once as an environment variable (MSBuild reads environment variables as properties):
+    portable zip...), set it once as a user environment variable (MSBuild reads environment variables as properties),
+    in PowerShell:
 
-      setx TabularEditor2Dir "D:\Tools\TabularEditor"
+      [Environment]::SetEnvironmentVariable('TabularEditor2Dir', 'D:\Tools\TabularEditor', 'User')
 
     then restart Visual Studio / the terminal. Or pass it to a single build: dotnet build -p:TabularEditor2Dir=...
   -->
