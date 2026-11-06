@@ -936,6 +936,23 @@ namespace TE_Scripting
         void createDynamicMeasure()
         {
             //using GeneralFunctions;
+            // MACRO: Name: Create Dynamic Measure
+            // MACRO: ValidContexts: Measure
+            // MACRO: Tooltip: Creates a dynamic measure and one disconnected selection table per property, based on the Properties annotations of the selected measures
+            // SKILL: name: create-dynamic-measure
+            // SKILL: description: Create a dynamic measure that switches between measures based on slicer selections, from measures carrying Properties annotations (e.g. created by Sum of Columns or Make Measures From Functions). Use when the user asks to create a dynamic measure, a measure switcher driven by slicers, let report users pick the aggregation / base column / time intelligence variant of a measure, or build disconnected selection tables from measure properties.
+            // SKILL:
+            // SKILL: Every measure must have a "Properties" annotation with pipe-separated values (e.g. "Sum|Sales Amount"), all with the same number of values and no two measures with the same Properties. For each property position the macro creates a disconnected calculated table "Selection <property name>" with the distinct values (label column, hidden-order "<name> Order" column and "<name> Key" column), plus one partially dynamic measure per value in that table (named after the value, or "<value> (dynamic)" if the name is taken). It then creates the dynamic measure in the table of the first measure: a SWITCH over the selected key of each table that returns the matching measure, with a dynamic format string that copies each measure's format.
+            // SKILL:
+            // SKILL: ## Inputs (environment variables)
+            // SKILL: Set these variables before running the macro. Work out each value from the conversation and the model (inspect the model if needed); if a value is unclear, ask the user instead of guessing.
+            // SKILL: - DM_MEASURES (required): measure refs ([Measure] or 'Table'[Measure]) separated by ';'. At least two measures with Properties annotations; they become the options of the dynamic measure.
+            // SKILL: - DM_PROPERTY_NAMES (optional): names of the properties, separated by '|' (e.g. "Aggregation|Base Column"), one per Properties value. They name the selection tables ("Selection <name>") and their columns. By default the PropertyNames annotation of the measures is used (the first one if they differ), or Property1, Property2... when there is none; set it when the measures have no PropertyNames, carry different ones, or the user wants other names.
+            // SKILL: - DM_NAME (optional, default "Dynamic Measure" followed by the property names separated by spaces, or just "Dynamic Measure" when there are none): name of the dynamic measure. Keep the default unless the user asked for a specific name or a measure with that name already exists.
+            // SKILL:
+            // SKILL: ## Notes
+            // SKILL: Check the Properties annotations of the measures before running (same count, unique combinations); the macro stops with an error otherwise. The "Selection <name>" tables must not already exist, so running it twice over measures with the same property names fails. Tell the user to use the label column of each Selection table in a slicer and the dynamic measure in visuals once the model is saved and refreshed.
+            // 2026-11-04 / B.Agullo / Skill-ready: in CLI mode (te or TE2 -S) the inputs come from the DM_* environment variables
             // 2026-05-30 / B.Agullo / FormatString values with embedded double-quotes are now escaped (doubled) when written into a DAX string literal
             // 2026-05-30 / B.Agullo / Fixed missing comma between SWITCH condition and its result value in all generated DAX expressions
             // 2026-05-30 / B.Agullo / PropertyNames with spaces are now sanitised (spaces removed) before use as DAX variable names; display names are unchanged
@@ -954,8 +971,27 @@ namespace TE_Scripting
             // Configuration: Prefix for disconnected tables (to group them together in Power BI Desktop)
             string tablePrefix = "Selection ";
 
+#if TECLI
+            bool cliMode = true;
+#else
+            bool cliMode = Fx.IsCliMode();
+#endif
+
+            List<Measure> sourceMeasures = null;
+            if (cliMode)
+            {
+                sourceMeasures = Fx.GetMeasuresFromEnv(Model, "DM_MEASURES");
+                if (sourceMeasures == null) return;
+            }
+#if !TECLI
+            else
+            {
+                sourceMeasures = Selected.Measures.ToList();
+            }
+#endif
+
             // Validate selection
-            if (Selected.Measures.Count() < 2)
+            if (sourceMeasures.Count < 2)
             {
                 Error("Select at least two measures with Properties annotations and try again.");
                 return;
@@ -964,7 +1000,7 @@ namespace TE_Scripting
             // Step 1: Extract and validate Properties annotations
             var measuresWithProperties = new List<(Measure measure, List<string> properties)>();
 
-            foreach (var measure in Selected.Measures)
+            foreach (var measure in sourceMeasures)
             {
                 string propertiesAnnotation = measure.GetAnnotation("Properties");
                 if (string.IsNullOrEmpty(propertiesAnnotation))
@@ -995,7 +1031,7 @@ namespace TE_Scripting
 
             // Step 3.5: Retrieve PropertyNames annotations from selected measures
             var propertyNamesAnnotations = new List<string>();
-            foreach (var measure in Selected.Measures)
+            foreach (var measure in sourceMeasures)
             {
                 string propertyNamesAnnotation = measure.GetAnnotation("PropertyNames") ?? "";
 
@@ -1008,7 +1044,31 @@ namespace TE_Scripting
             // Determine property names for disconnected tables and variables
             List<string> propertyNames = new List<string>();
 
-            if (propertyNamesAnnotations.Count > 0)
+            if (cliMode)
+            {
+                // Explicit names, else the first PropertyNames annotation, else Property1, Property2...
+                string cliPropertyNames = Fx.GetStringFromEnv("DM_PROPERTY_NAMES", defaultValue: "");
+                if (string.IsNullOrWhiteSpace(cliPropertyNames) && propertyNamesAnnotations.Count > 0)
+                {
+                    cliPropertyNames = propertyNamesAnnotations[0];
+                }
+
+                if (string.IsNullOrWhiteSpace(cliPropertyNames))
+                {
+                    for (int i = 0; i < propertyCount; i++) propertyNames.Add(String.Format("Property{0}", i + 1));
+                }
+                else
+                {
+                    propertyNames = cliPropertyNames.Split('|').Select(p => p.Trim()).ToList();
+                    if (propertyNames.Count != propertyCount)
+                    {
+                        Error(String.Format("Property names '{0}' have {1} values, but the Properties annotations have {2}. Set DM_PROPERTY_NAMES with {2} names separated by '|'.", cliPropertyNames, propertyNames.Count, propertyCount));
+                        return;
+                    }
+                }
+            }
+#if !TECLI
+            else if (propertyNamesAnnotations.Count > 0)
             {
                 // Get distinct PropertyNames values
                 var distinctPropertyNames = propertyNamesAnnotations.Distinct().ToList();
@@ -1073,17 +1133,28 @@ namespace TE_Scripting
                     propertyNames.Add(propertyName);
                 }
             }
+#endif
 
             // Step 4: Ask user for dynamic measure name with smart default based on PropertyNames
             string defaultDynamicMeasureName = propertyNames.Count > 0
                 ? "Dynamic Measure " + string.Join(" ", propertyNames)
                 : "Dynamic Measure";
 
-            string dynamicMeasureName = Fx.GetNameFromUser(
-                Prompt: "Enter the name for the dynamic measure:",
-                Title: "Dynamic Measure Name",
-                DefaultResponse: defaultDynamicMeasureName
-            );
+            string dynamicMeasureName = null;
+            if (cliMode)
+            {
+                dynamicMeasureName = Fx.GetStringFromEnv("DM_NAME", defaultValue: defaultDynamicMeasureName);
+            }
+#if !TECLI
+            else
+            {
+                dynamicMeasureName = Fx.GetNameFromUser(
+                    Prompt: "Enter the name for the dynamic measure:",
+                    Title: "Dynamic Measure Name",
+                    DefaultResponse: defaultDynamicMeasureName
+                );
+            }
+#endif
             if (dynamicMeasureName == null) return;
 
             // DAX variable names cannot contain spaces – strip them from propertyNames
@@ -2002,7 +2073,26 @@ namespace TE_Scripting
             //#r "System.Drawing"
             //using Microsoft.VisualBasic;
             //using GeneralFunctions;
-
+            // MACRO: Name: Create Field Parameter
+            // MACRO: ValidContexts: Measure, Column
+            // MACRO: Tooltip: Creates a field parameter table with the selected measures or columns, adding a column per Properties annotation
+            // SKILL: name: create-field-parameter
+            // SKILL: description: Create a field parameter table from measures or columns of a semantic model. Use when the user asks to create a field parameter, let report users switch the measure or column shown in a visual, build a measure/column selector or a dynamic axis.
+            // SKILL:
+            // SKILL: Creates a calculated table that works as a Power BI field parameter, with one row per measure (or column): a name column (with the parameter name), a hidden "<name> Fields" column and a hidden "<name> Order" column. If the objects have a "Properties" annotation (pipe-separated values, e.g. from the Sum of Columns or Make Measures From Functions macros), each value becomes an extra column, named after the "PropertyNames" annotation.
+            // SKILL:
+            // SKILL: ## Inputs (environment variables)
+            // SKILL: Set these variables before running the macro. Work out each value from the conversation and the model (inspect the model if needed); if a value is unclear, ask the user instead of guessing.
+            // SKILL: Set exactly one of FP_MEASURES (measure field parameter) or FP_COLUMNS (column field parameter); the macro fails if neither is set.
+            // SKILL: - FP_MEASURES (optional, set it unless FP_COLUMNS is set): measure refs ([Measure] or 'Table'[Measure]) separated by ';'. The measures of the field parameter, in this order.
+            // SKILL: - FP_COLUMNS (optional, set it instead of FP_MEASURES for a column field parameter): 'Table'[Column] refs separated by ';'. When set, FP_MEASURES is ignored.
+            // SKILL: - FP_ORDER_BY_NAME (optional, default "false"): true to sort the items by name instead of keeping the given order.
+            // SKILL: - FP_PROPERTY_NAMES (optional): names of the property columns, separated by '|' (e.g. "Aggregation|Base Column|Table"). Only used when the objects have Properties annotations. By default the PropertyNames annotation of the objects is used (the first one if they differ), or Property1, Property2... when there is none; set it when the user wants other column names or the objects carry different PropertyNames.
+            // SKILL: - FP_NAME (optional, default "Parameter" followed by the property names separated by spaces, or just "Parameter" when there are no properties): name of the field parameter table and of its main column. Keep the default unless the user asked for a specific name or a table with that name already exists (then pick a descriptive unique one, e.g. "Measure Selector").
+            // SKILL:
+            // SKILL: ## Notes
+            // SKILL: Against Power BI Desktop, unsupported features must be enabled in Tabular Editor. The table must not already exist. Tell the user the field parameter can be used in visuals and slicers once the model is saved and refreshed.
+            // 2026-11-04 / B.Agullo / Skill-ready: in CLI mode (te or TE2 -S) the inputs come from the FP_* environment variables
             // 2026-05-13 / B.Agullo / fixed bug to execute in TE2
             //2026-04-23 / B.Agullo / improvements to the default parameter name suggestion logic (based on property names if available) 
             //2026-03-29 / B.Agullo / added support for propertyNames annotation
@@ -2019,14 +2109,56 @@ namespace TE_Scripting
             ScriptHelper.WaitFormVisible = false;
 #endif
 
-            if (Selected.Columns.Count == 0 && Selected.Measures.Count == 0) throw new Exception("No columns or measures selected!");
+#if TECLI
+            bool cliMode = true;
+#else
+            bool cliMode = Fx.IsCliMode();
+#endif
 
             // Get objects collection
-            var objects = Selected.Columns.Any() ? Selected.Columns.Cast<ITabularTableObject>() : Selected.Measures;
+            IEnumerable<ITabularTableObject> objects = null;
+            bool orderByName = false;
+            if (cliMode)
+            {
+                if (!String.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FP_COLUMNS")))
+                {
+                    List<Column> fpColumns = Fx.GetColumnsFromEnv(Model, "FP_COLUMNS");
+                    if (fpColumns == null) return;
+                    objects = fpColumns.Cast<ITabularTableObject>().ToList();
+                }
+                else
+                {
+                    List<Measure> fpMeasures = Fx.GetMeasuresFromEnv(Model, "FP_MEASURES");
+                    if (fpMeasures == null) return;
+                    objects = fpMeasures.Cast<ITabularTableObject>().ToList();
+                }
+                if (!objects.Any()) { Error("FP_MEASURES / FP_COLUMNS contain no objects."); return; }
 
-            if (Fx.IsAnswerYes("Do you want to order measures/columns by name?"))
+                bool? orderByNameEnv = Fx.GetBoolFromEnv("FP_ORDER_BY_NAME", defaultValue: false);
+                if (orderByNameEnv == null) return;
+                orderByName = orderByNameEnv.Value;
+            }
+#if !TECLI
+            else
+            {
+                if (Selected.Columns.Count == 0 && Selected.Measures.Count == 0) throw new Exception("No columns or measures selected!");
+
+                objects = Selected.Columns.Any() ? Selected.Columns.Cast<ITabularTableObject>() : Selected.Measures;
+
+                orderByName = Fx.IsAnswerYes("Do you want to order measures/columns by name?");
+            }
+#endif
+
+            if (orderByName)
             {
                 objects = objects.OrderBy(o => o.Name).ToList();
+            }
+
+            // In CLI mode the property column names can be given explicitly (pipe-separated)
+            string cliPropertyNames = null;
+            if (cliMode)
+            {
+                cliPropertyNames = Fx.GetStringFromEnv("FP_PROPERTY_NAMES", defaultValue: "");
             }
 
             // Retrieve Properties annotations and split them by pipe delimiter
@@ -2086,7 +2218,28 @@ namespace TE_Scripting
             // Determine property names for field parameter columns
             List<string> propertyNames = new List<string>();
 
-            if (propertyNamesAnnotations.Count > 0)
+            if (cliMode)
+            {
+                var distinctPropertyNames = propertyNamesAnnotations.Distinct().ToList();
+                if (maxPropertiesCount > 0 && !string.IsNullOrWhiteSpace(cliPropertyNames))
+                {
+                    propertyNames = cliPropertyNames.Split('|').Select(p => p.Trim()).ToList();
+                }
+                else if (distinctPropertyNames.Count > 0)
+                {
+                    // Same default as the interactive dialogs: the (first) PropertyNames annotation
+                    propertyNames = distinctPropertyNames[0].Split('|').ToList();
+                }
+                else
+                {
+                    for (int i = 0; i < maxPropertiesCount; i++)
+                    {
+                        propertyNames.Add(String.Format("Property{0}", i + 1));
+                    }
+                }
+            }
+#if !TECLI
+            else if (propertyNamesAnnotations.Count > 0)
             {
                 // Get distinct PropertyNames values
                 var distinctPropertyNames = propertyNamesAnnotations.Distinct().ToList();
@@ -2152,6 +2305,7 @@ namespace TE_Scripting
                     propertyNames.Add(propertyName);
                 }
             }
+#endif
 
             // Build default parameter name based on PropertyNames
             string defaultParameterName = propertyNames.Count > 0
@@ -2159,9 +2313,20 @@ namespace TE_Scripting
                 : "Parameter";
 
             // Ask user for parameter name with smart default
-            var name = Fx.GetNameFromUser("Provide the name for the field parameter", "Parameter name", defaultParameterName);
+            string name = null;
+            if (cliMode)
+            {
+                name = Fx.GetStringFromEnv("FP_NAME", defaultValue: defaultParameterName);
+            }
+#if !TECLI
+            else
+            {
+                name = Fx.GetNameFromUser("Provide the name for the field parameter", "Parameter name", defaultParameterName);
+            }
+#endif
 
             if (string.IsNullOrEmpty(name)) return;
+            if (cliMode && Model.Tables.Any(t => t.Name == name)) { Error("A table named '" + name + "' already exists. Set FP_NAME to another name."); return; }
 
             // Construct the DAX for the calculated table based on the current selection:
             string dax = "";
@@ -5390,6 +5555,7 @@ namespace TE_Scripting
             //using Microsoft.CodeAnalysis.CSharp.Syntax;
             //using System.Text.RegularExpressions;
 
+            // '2026-11-04 / B.Agullo / Duplicate #r / using directives are removed from the output
             // '2026-11-01 / B.Agullo / Helper methods (Fx, Rx...) the macro never reaches, directly or through other helpers, are removed
             // '2026-10-31 / B.Agullo / Optional macroName and outputFilePath skip the dialog and write the code to a file instead of the clipboard (used to publish macros)
             // '2026-10-29 / B.Agullo / Helper methods not reached in CLI mode are wrapped in #if !TECLI so skill-ready macros compile in te
@@ -5710,10 +5876,16 @@ namespace TE_Scripting
                 foreach (string outputLine in allOutputLines)
                 {
                     string trimmedLine = outputLine.Trim();
+                    // Directives are deduplicated here: the merge above can't always tell a directive is already
+                    // present (the class lines keep a trailing '\r'), so the same using / #r may arrive twice
                     if (trimmedLine.StartsWith("#r "))
-                        hashrDirectivesFinal.Add(trimmedLine);
+                    {
+                        if (!hashrDirectivesFinal.Contains(trimmedLine)) hashrDirectivesFinal.Add(trimmedLine);
+                    }
                     else if (trimmedLine.StartsWith("using ") && trimmedLine.EndsWith(";") && !trimmedLine.Contains("("))
-                        usingDirectivesFinal.Add(trimmedLine);
+                    {
+                        if (!usingDirectivesFinal.Contains(trimmedLine)) usingDirectivesFinal.Add(trimmedLine);
+                    }
                     else
                         remainingCodeLines.Add(outputLine);
                 }

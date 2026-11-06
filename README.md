@@ -5,6 +5,16 @@ Please see
 https://www.esbrina-ba.com/c-scripting-nirvana-effortlessly-use-visual-studio-as-your-coding-environment/
 for details
 
+## Setting up a new machine
+
+Full guide, for both this solution and the macros it publishes: [SETUP.md in TabularEditor-Scripts](https://github.com/bernatagulloesbrina/TabularEditor-Scripts/blob/main/SETUP.md). With the te-macros Claude Code plugin installed, ask "set up my Tabular Editor environment including authoring".
+
+In short:
+
+- **Build prerequisites**: the .NET SDK (`dotnet`, 6 or later) and Tabular Editor 2. Every project references `TabularEditor.exe` and `TOMWrapper.dll` through `TE.References.props`, from `C:\Program Files (x86)\Tabular Editor`. If TE2 is installed somewhere else, set the `TabularEditor2Dir` user environment variable to its folder and restart Visual Studio.
+- **Clone TabularEditor-Scripts next to this repo** (see below).
+- **Install CopyMacro in Tabular Editor** (close it first): `.\.claude\skills\publish-macro\scripts\Install-CopyMacro.ps1`. It writes this repo's path into the macro, so run it again if you move the clone.
+
 ## Publishing macros with Claude Code
 
 The repo includes two Claude Code skills in `.claude/skills`:
